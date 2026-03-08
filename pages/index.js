@@ -297,6 +297,18 @@ export default function TrendForgePage() {
   const visible=trends.filter(t=>!dismissed.includes(t.title));
   const selectedTm=selectedTrend?(TIER_META[selectedTrend.tier]||TIER_META[2]):null;
 
+  function doReset() {
+    setStep("idle");
+    setOutputs({});
+    setSelectedTrend(null);
+    setTrends([]);
+    setKitSaved(false);
+    setErrorMsg("");
+    setErrorHint("");
+    setDismissed([]);
+    window.scrollTo({top:0,behavior:"smooth"});
+  }
+
   async function doFetchTrends() {
     setStep("fetchingTrends");
     setTrends([]);setSelectedTrend(null);setOutputs({});
@@ -309,7 +321,7 @@ export default function TrendForgePage() {
       setTimeout(()=>pickerRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),150);
     } catch {
       setErrorMsg("Network error — cannot reach /api/trends.");
-      setErrorHint("Make sure the Next.js dev server is running on localhost:3000");
+      setErrorHint("Make sure the dev server is running.");
       setStep("error");
     }
   }
@@ -370,96 +382,116 @@ export default function TrendForgePage() {
           {!showSaved&&(
             <>
               <StepBar step={step}/>
+
+              {/* SETTINGS PANEL — always visible, collapses when busy */}
               <div style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:24,padding:"28px",marginBottom:18,animation:"fadeUp 0.5s ease 0.06s both"}}>
 
-                <div style={{marginBottom:20}}>
-                  <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>Platform</label>
-                  <div style={{display:"flex",gap:8}}>
-                    {PLATFORMS.map(p=>(
-                      <button key={p.id} onClick={()=>!isBusy&&setPlatform(p.id)} style={{flex:1,background:platform===p.id?`${p.color}18`:"rgba(255,255,255,0.03)",border:`1.5px solid ${platform===p.id?`${p.color}66`:"rgba(255,255,255,0.07)"}`,borderRadius:12,padding:"13px 8px",cursor:isBusy?"not-allowed":"pointer",color:platform===p.id?p.color:"#555",fontWeight:700,fontSize:13,transition:"all 0.18s",textAlign:"center"}}>
-                        <div style={{fontSize:18,marginBottom:3}}>{p.emoji}</div>
-                        <div>{p.label}</div>
-                        <div style={{fontSize:9,fontWeight:500,opacity:0.65,marginTop:2,lineHeight:1.3}}>{p.tagline}</div>
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{marginTop:12,padding:"10px 14px",background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:10,display:"flex",alignItems:"flex-start",gap:10}}>
-                    <span style={{fontSize:13,flexShrink:0}}>🔌</span>
-                    <div style={{fontSize:11,color:"#555",lineHeight:1.6}}>
-                      <span style={{color:activePlatform.badgeColor,fontWeight:700}}>{activePlatform.sourceBadge}:</span>{" "}{activePlatform.sourceNote}
+                {/* Edit Settings bar — shown after results generated */}
+                {["generating","done"].includes(step)&&(
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,padding:"12px 16px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12}}>
+                    <div>
+                      <span style={{fontSize:12,color:"#666",fontWeight:600}}>⚙️ Settings locked while kit is active</span>
+                      <div style={{fontSize:11,color:"#444",marginTop:2}}>{activeNiche} · {regionLabel} · {activeLanguage}</div>
                     </div>
+                    <button onClick={doReset} style={{background:"rgba(255,59,92,0.08)",border:"1px solid rgba(255,59,92,0.25)",borderRadius:10,padding:"8px 16px",color:"#FF3B5C",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                      ⚙️ Edit Settings
+                    </button>
                   </div>
-                  <DataSourceBanner platform={platform}/>
-                </div>
+                )}
 
-                <div style={{marginBottom:24}}>
-                  <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>⏱ Time Window</label>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-                    {TIME_WINDOWS.map(tw=>(
-                      <button key={tw.id} onClick={()=>!isBusy&&setTimeWindow(tw.id)} style={{background:timeWindow===tw.id?`${tw.color}18`:"rgba(255,255,255,0.03)",border:`1.5px solid ${timeWindow===tw.id?`${tw.color}66`:"rgba(255,255,255,0.07)"}`,borderRadius:11,padding:"12px 8px",cursor:isBusy?"not-allowed":"pointer",color:timeWindow===tw.id?tw.color:"#555",fontWeight:700,fontSize:12,transition:"all 0.18s",textAlign:"center"}}>
-                        <div style={{fontSize:15,marginBottom:2}}>{tw.emoji}</div>
-                        <div>{tw.label}</div>
-                        <div style={{fontSize:10,fontWeight:400,opacity:0.6,marginTop:1}}>{tw.sub}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{marginBottom:16}}>
-                  <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>Your Niche</label>
-                  <div style={{position:"relative"}}>
-                    <select value={niche} onChange={e=>{setNiche(e.target.value);setCustomNiche("");}} disabled={isBusy} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1.5px solid rgba(255,255,255,0.08)",borderRadius:11,padding:"12px 40px 12px 16px",color:"#ccc",fontSize:13,cursor:"pointer"}}>
-                      {NICHE_GROUPS.map(g=>(
-                        <optgroup key={g.group} label={g.group} style={{background:"#151515",color:"#888"}}>
-                          {g.niches.map(n=><option key={n} value={n} style={{background:"#151515",color:"#ccc"}}>{n}</option>)}
-                        </optgroup>
-                      ))}
-                    </select>
-                    <span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",color:"#444",pointerEvents:"none",fontSize:11}}>▾</span>
-                  </div>
-                </div>
-
-                <div style={{marginBottom:24}}>
-                  <input type="text" value={customNiche} onChange={e=>setCustomNiche(e.target.value)} placeholder="Or type your own niche: e.g. Sustainable Vlogging, Dog Training..." disabled={isBusy} style={{width:"100%",background:"rgba(255,255,255,0.03)",border:`1.5px solid ${customNiche?"rgba(255,59,92,0.3)":"rgba(255,255,255,0.07)"}`,borderRadius:11,padding:"12px 16px",color:"#ddd",fontSize:13,transition:"border-color 0.2s"}}/>
-                </div>
-
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-                  <div>
-                    <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>📍 Region</label>
-                    <div style={{position:"relative"}}>
-                      <select value={region} onChange={e=>setRegion(e.target.value)} disabled={isBusy} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1.5px solid rgba(255,255,255,0.08)",borderRadius:11,padding:"12px 36px 12px 14px",color:"#ccc",fontSize:12.5,cursor:"pointer"}}>
-                        {REGIONS.map(r=><option key={r.id} value={r.id} style={{background:"#151515"}}>{r.label}</option>)}
-                      </select>
-                      <span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",color:"#444",pointerEvents:"none",fontSize:11}}>▾</span>
+                {/* Hide controls when generating/done */}
+                {!["generating","done"].includes(step)&&(
+                  <>
+                    <div style={{marginBottom:20}}>
+                      <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>Platform</label>
+                      <div style={{display:"flex",gap:8}}>
+                        {PLATFORMS.map(p=>(
+                          <button key={p.id} onClick={()=>!isBusy&&setPlatform(p.id)} style={{flex:1,background:platform===p.id?`${p.color}18`:"rgba(255,255,255,0.03)",border:`1.5px solid ${platform===p.id?`${p.color}66`:"rgba(255,255,255,0.07)"}`,borderRadius:12,padding:"13px 8px",cursor:isBusy?"not-allowed":"pointer",color:platform===p.id?p.color:"#555",fontWeight:700,fontSize:13,transition:"all 0.18s",textAlign:"center"}}>
+                            <div style={{fontSize:18,marginBottom:3}}>{p.emoji}</div>
+                            <div>{p.label}</div>
+                            <div style={{fontSize:9,fontWeight:500,opacity:0.65,marginTop:2,lineHeight:1.3}}>{p.tagline}</div>
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{marginTop:12,padding:"10px 14px",background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:10,display:"flex",alignItems:"flex-start",gap:10}}>
+                        <span style={{fontSize:13,flexShrink:0}}>🔌</span>
+                        <div style={{fontSize:11,color:"#555",lineHeight:1.6}}>
+                          <span style={{color:activePlatform.badgeColor,fontWeight:700}}>{activePlatform.sourceBadge}:</span>{" "}{activePlatform.sourceNote}
+                        </div>
+                      </div>
+                      <DataSourceBanner platform={platform}/>
                     </div>
-                  </div>
-                  <div>
-                    <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>🗣️ Language</label>
-                    <div style={{position:"relative"}}>
-                      <select value={language} onChange={e=>setLanguage(e.target.value)} disabled={isBusy} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1.5px solid rgba(255,255,255,0.08)",borderRadius:11,padding:"12px 36px 12px 14px",color:"#ccc",fontSize:12.5,cursor:"pointer"}}>
-                        {LANGUAGES.map(l=><option key={l.id} value={l.id} style={{background:"#151515"}}>{l.label}</option>)}
-                      </select>
-                      <span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",color:"#444",pointerEvents:"none",fontSize:11}}>▾</span>
+
+                    <div style={{marginBottom:24}}>
+                      <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>⏱ Time Window</label>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                        {TIME_WINDOWS.map(tw=>(
+                          <button key={tw.id} onClick={()=>!isBusy&&setTimeWindow(tw.id)} style={{background:timeWindow===tw.id?`${tw.color}18`:"rgba(255,255,255,0.03)",border:`1.5px solid ${timeWindow===tw.id?`${tw.color}66`:"rgba(255,255,255,0.07)"}`,borderRadius:11,padding:"12px 8px",cursor:isBusy?"not-allowed":"pointer",color:timeWindow===tw.id?tw.color:"#555",fontWeight:700,fontSize:12,transition:"all 0.18s",textAlign:"center"}}>
+                            <div style={{fontSize:15,marginBottom:2}}>{tw.emoji}</div>
+                            <div>{tw.label}</div>
+                            <div style={{fontSize:10,fontWeight:400,opacity:0.6,marginTop:1}}>{tw.sub}</div>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                </div>
 
-                <div style={{marginBottom:28}}>
-                  <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>Creator Stage</label>
-                  <div style={{display:"flex",gap:8}}>
-                    {CREATOR_STAGES.map(s=>(
-                      <button key={s.id} onClick={()=>!isBusy&&setCreatorStage(s.id)} style={{flex:1,background:creatorStage===s.id?"rgba(191,90,242,0.1)":"rgba(255,255,255,0.03)",border:`1.5px solid ${creatorStage===s.id?"rgba(191,90,242,0.4)":"rgba(255,255,255,0.07)"}`,borderRadius:11,padding:"12px 8px",cursor:isBusy?"not-allowed":"pointer",color:creatorStage===s.id?"#BF5AF2":"#555",fontWeight:700,fontSize:12,transition:"all 0.18s",textAlign:"center"}}>
-                        <div style={{fontSize:15,marginBottom:2}}>{s.emoji}</div>
-                        <div>{s.label}</div>
-                        <div style={{fontSize:10,fontWeight:400,opacity:0.6,marginTop:1}}>{s.sub}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                    <div style={{marginBottom:16}}>
+                      <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>Your Niche</label>
+                      <div style={{position:"relative"}}>
+                        <select value={niche} onChange={e=>{setNiche(e.target.value);setCustomNiche("");}} disabled={isBusy} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1.5px solid rgba(255,255,255,0.08)",borderRadius:11,padding:"12px 40px 12px 16px",color:"#ccc",fontSize:13,cursor:"pointer"}}>
+                          {NICHE_GROUPS.map(g=>(
+                            <optgroup key={g.group} label={g.group} style={{background:"#151515",color:"#888"}}>
+                              {g.niches.map(n=><option key={n} value={n} style={{background:"#151515",color:"#ccc"}}>{n}</option>)}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",color:"#444",pointerEvents:"none",fontSize:11}}>▾</span>
+                      </div>
+                    </div>
 
-                <button onClick={doFetchTrends} disabled={isBusy} style={{width:"100%",padding:"16px",background:isBusy?"rgba(255,255,255,0.04)":"linear-gradient(135deg,#FF3B5C 0%,#FF9F0A 100%)",backgroundSize:"200% 200%",animation:!isBusy?"glow 3s ease infinite":"none",border:"none",borderRadius:13,color:isBusy?"#333":"#fff",fontSize:15,fontWeight:800,cursor:isBusy?"not-allowed":"pointer",transition:"opacity 0.2s"}}>
-                  {step==="fetchingTrends"?`🔍 Fetching from ${activePlatform.dataSource}...`:`⚡ Find ${timeWindow}h ${activePlatform.label} Trends — ${regionLabel}`}
-                </button>
+                    <div style={{marginBottom:24}}>
+                      <input type="text" value={customNiche} onChange={e=>setCustomNiche(e.target.value)} placeholder="Or type your own niche: e.g. Sustainable Vlogging, Dog Training..." disabled={isBusy} style={{width:"100%",background:"rgba(255,255,255,0.03)",border:`1.5px solid ${customNiche?"rgba(255,59,92,0.3)":"rgba(255,255,255,0.07)"}`,borderRadius:11,padding:"12px 16px",color:"#ddd",fontSize:13,transition:"border-color 0.2s"}}/>
+                    </div>
+
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+                      <div>
+                        <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>📍 Region</label>
+                        <div style={{position:"relative"}}>
+                          <select value={region} onChange={e=>setRegion(e.target.value)} disabled={isBusy} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1.5px solid rgba(255,255,255,0.08)",borderRadius:11,padding:"12px 36px 12px 14px",color:"#ccc",fontSize:12.5,cursor:"pointer"}}>
+                            {REGIONS.map(r=><option key={r.id} value={r.id} style={{background:"#151515"}}>{r.label}</option>)}
+                          </select>
+                          <span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",color:"#444",pointerEvents:"none",fontSize:11}}>▾</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>🗣️ Language</label>
+                        <div style={{position:"relative"}}>
+                          <select value={language} onChange={e=>setLanguage(e.target.value)} disabled={isBusy} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1.5px solid rgba(255,255,255,0.08)",borderRadius:11,padding:"12px 36px 12px 14px",color:"#ccc",fontSize:12.5,cursor:"pointer"}}>
+                            {LANGUAGES.map(l=><option key={l.id} value={l.id} style={{background:"#151515"}}>{l.label}</option>)}
+                          </select>
+                          <span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",color:"#444",pointerEvents:"none",fontSize:11}}>▾</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{marginBottom:28}}>
+                      <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>Creator Stage</label>
+                      <div style={{display:"flex",gap:8}}>
+                        {CREATOR_STAGES.map(s=>(
+                          <button key={s.id} onClick={()=>!isBusy&&setCreatorStage(s.id)} style={{flex:1,background:creatorStage===s.id?"rgba(191,90,242,0.1)":"rgba(255,255,255,0.03)",border:`1.5px solid ${creatorStage===s.id?"rgba(191,90,242,0.4)":"rgba(255,255,255,0.07)"}`,borderRadius:11,padding:"12px 8px",cursor:isBusy?"not-allowed":"pointer",color:creatorStage===s.id?"#BF5AF2":"#555",fontWeight:700,fontSize:12,transition:"all 0.18s",textAlign:"center"}}>
+                            <div style={{fontSize:15,marginBottom:2}}>{s.emoji}</div>
+                            <div>{s.label}</div>
+                            <div style={{fontSize:10,fontWeight:400,opacity:0.6,marginTop:1}}>{s.sub}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button onClick={doFetchTrends} disabled={isBusy} style={{width:"100%",padding:"16px",background:isBusy?"rgba(255,255,255,0.04)":"linear-gradient(135deg,#FF3B5C 0%,#FF9F0A 100%)",backgroundSize:"200% 200%",animation:!isBusy?"glow 3s ease infinite":"none",border:"none",borderRadius:13,color:isBusy?"#333":"#fff",fontSize:15,fontWeight:800,cursor:isBusy?"not-allowed":"pointer",transition:"opacity 0.2s"}}>
+                      {step==="fetchingTrends"?`🔍 Fetching from ${activePlatform.dataSource}...`:`⚡ Find ${timeWindow}h ${activePlatform.label} Trends — ${regionLabel}`}
+                    </button>
+                  </>
+                )}
               </div>
 
               {step==="error"&&<div style={{background:"rgba(255,59,92,0.06)",border:"1px solid rgba(255,59,92,0.2)",borderRadius:14,padding:"18px 22px",marginBottom:18}}><div style={{color:"#FF3B5C",fontSize:14,fontWeight:700,marginBottom:errorHint?8:0}}>{errorMsg}</div>{errorHint&&<div style={{color:"#FF453A",fontSize:12,opacity:0.8}}>{errorHint}</div>}</div>}
@@ -531,6 +563,7 @@ export default function TrendForgePage() {
                     {step==="done"&&(
                       <div style={{marginTop:24,paddingTop:20,borderTop:"1px solid rgba(255,255,255,0.05)"}}>
                         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                          <button onClick={doReset} style={{flex:1,minWidth:120,padding:"13px",background:"rgba(255,59,92,0.08)",border:"1px solid rgba(255,59,92,0.25)",borderRadius:11,color:"#FF3B5C",fontSize:13,fontWeight:700,cursor:"pointer"}}>⚙️ Edit Settings</button>
                           <button onClick={()=>{setStep("pickTrend");setOutputs({});setSelectedTrend(null);setKitSaved(false);}} style={{flex:1,minWidth:120,padding:"13px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:11,color:"#666",fontSize:13,fontWeight:700,cursor:"pointer"}}>← Try Another</button>
                           <button onClick={doSaveKit} style={{flex:1,minWidth:120,padding:"13px",background:kitSaved?"rgba(50,215,75,0.1)":"rgba(191,90,242,0.1)",border:`1px solid ${kitSaved?"rgba(50,215,75,0.3)":"rgba(191,90,242,0.3)"}`,borderRadius:11,color:kitSaved?"#32D74B":"#BF5AF2",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>{kitSaved?"✓ Kit Saved!":"💾 Save Kit"}</button>
                           <button onClick={doFetchTrends} style={{flex:1,minWidth:120,padding:"13px",background:"linear-gradient(135deg,#FF3B5C,#FF9F0A)",backgroundSize:"200% 200%",animation:"glow 3s ease infinite",border:"none",borderRadius:11,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer"}}>🔄 New Trends</button>
