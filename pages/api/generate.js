@@ -71,7 +71,7 @@ const SECTIONS = {
   },
   viralHooks: {
   sys: c => `You are a viral ${c.platform} hook writer. Plain text only. Max 150 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
-  usr: c => `${c.base}\n\nWrite 5 viral opening hooks using the RETENTION FRAMEWORK:\n1) Promise a payoff at the end — tease something exciting that will be revealed only at the end\n2) Establish a clear problem or curiosity in the first 4-5 seconds\n3) Relatable raw opener — no VFX, no captions, just a real person talking about something they genuinely enjoy\n4) Shocking stat or unexpected angle that makes viewer think "I've never heard this before"\n5) Create a conflict or tension — make them feel "what's going to happen next?"\nEach hook must make someone stop scrolling AND want to stay till the end. Number them 1-5.`,
+  usr: c => `${c.base}\n\nWrite a punchy Trend Brief: (1) What this trend is right now, (2) Why it's spreading on ${c.platform}, (3) The specific creative angle a "${c.niche}" creator should take — NOT covering the trend directly but finding a fun, natural connection between this trend and their niche content style. (4) End with one sentence on the opportunity window. Think like a creator strategist, not a journalist.`,
   },
   captions: {
   sys: c => `You are a ${c.platform} caption expert. Plain text only. Max 180 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
