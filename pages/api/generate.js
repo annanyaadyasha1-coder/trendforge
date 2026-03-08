@@ -63,7 +63,7 @@ function buildContext(trend, platform, niche, region, creatorStage, language) {
 const SECTIONS = {
   trendBrief: {
     sys: c => `You are a trend analyst for ${c.platform} creators. Plain text only. No markdown. Max 130 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nWrite a punchy Trend Brief: (1) What this trend is right now, (2) Why it's spreading on ${c.platform}, (3) Who is watching it and why, (4) The exact angle a ${c.stageLabel} creator in "${c.niche}" should take for ${c.region}. End with one sentence on how long the opportunity window lasts.`,
+    usr: c => `${c.base}\n\nGive exactly 3 specific ${c.format} ideas for a ${c.stageLabel} creator in the "${c.niche}" niche. IMPORTANT: Do NOT suggest covering the trend directly. Find a creative angle that CONNECTS this trend to the "${c.niche}" content style naturally. A couple vlogger makes couple content tied to the trend, a food creator makes food content tied to the trend. Number them 1, 2, 3. Each: TITLE IN CAPS + unique niche angle + why it performs. Idea 1 = safest. Idea 2 = medium bold. Idea 3 = most viral.',
   },
   videoIdeas: {
     sys: c => `You are a viral ${c.platform} content strategist. Plain text only. Max 190 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
