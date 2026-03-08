@@ -70,8 +70,8 @@ const SECTIONS = {
     usr: c => `${c.base}\n\nGive exactly 3 specific ${c.format} ideas for this trend tailored to ${c.region} and a ${c.stageLabel} creator in "${c.niche}". Number them 1, 2, 3. Each: TITLE IN CAPS + one sentence on the unique angle + one sentence on why it'll perform. Idea 1 = safest. Idea 2 = medium bold. Idea 3 = highest viral potential.`,
   },
   viralHooks: {
-    sys: c => `You are a viral ${c.platform} hook writer. Plain text only. Max 150 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nWrite 5 viral opening hooks (first 2–3 seconds). One each for:\n1) Curiosity gap\n2) Bold controversial statement\n3) Relatable personal story opener\n4) Shocking stat or fact\n5) Direct challenge to the viewer\nEach must make someone stop scrolling on ${c.platform} immediately. Number them 1-5.`,
+  sys: c => `You are a viral ${c.platform} hook writer. Plain text only. Max 150 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+  usr: c => `${c.base}\n\nWrite 5 viral opening hooks using the RETENTION FRAMEWORK:\n1) Promise a payoff at the end — tease something exciting that will be revealed only at the end\n2) Establish a clear problem or curiosity in the first 4-5 seconds\n3) Relatable raw opener — no VFX, no captions, just a real person talking about something they genuinely enjoy\n4) Shocking stat or unexpected angle that makes viewer think "I've never heard this before"\n5) Create a conflict or tension — make them feel "what's going to happen next?"\nEach hook must make someone stop scrolling AND want to stay till the end. Number them 1-5.`,
   },
   captions: {
     sys: c => `You are a ${c.platform} caption expert. Plain text only. Max 180 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
