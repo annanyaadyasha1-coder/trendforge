@@ -42,6 +42,7 @@ const NICHE_GROUPS = [
   { group:"🎮 Tech & Gaming",        niches:["Tech Reviews & Gadgets","Gaming & Esports","AI & Productivity","Coding & Dev Life"] },
   { group:"🎭 Entertainment",        niches:["Comedy & Skits","Pop Culture & Reactions","Music","Sports","True Crime"] },
   { group:"📚 Education & Self-Dev", niches:["Education & Explainers","Motivation & Mindset","Parenting & Family","Relationships & Dating","DIY & Home Decor","Pets & Animals"] },
+  { group:"🎬 Film & Animation",     niches:["Film & Animation","Movie Reviews","Anime","Cartoons & Animation","Film Analysis"] },
 ];
 
 const REGIONS = [
@@ -71,6 +72,9 @@ const OUTPUT_SECTIONS = [
   { key:"audioFormat",          icon:"🎵", label:"Format & Algorithm"         },
   { key:"performancePrediction",icon:"📊", label:"Performance Prediction"     },
   { key:"calendar",             icon:"📅", label:"7-Day Calendar"             },
+  { key:"youtubeTitles",        icon:"🏆", label:"YouTube Titles (SEO)"       },
+  { key:"youtubeDescription",   icon:"📝", label:"YouTube Description"        },
+  { key:"youtubeTags",          icon:"🏷️",  label:"YouTube Tags"               },
 ];
 
 const TIER_META = {
@@ -267,6 +271,9 @@ export default function TrendForgePage() {
   const [platform,setPlatform]=useState("youtube");
   const [niche,setNiche]=useState("Daily Vlogging");
   const [customNiche,setCustomNiche]=useState("");
+  const [nicheDescription,setNicheDescription]=useState("");
+  const [mappingNiche,setMappingNiche]=useState(false);
+  const [mappedResult,setMappedResult]=useState(null);
   const [region,setRegion]=useState("global");
   const [creatorStage,setCreatorStage]=useState("starter");
   const [language,setLanguage]=useState("english");
@@ -307,6 +314,41 @@ export default function TrendForgePage() {
     setErrorHint("");
     setDismissed([]);
     window.scrollTo({top:0,behavior:"smooth"});
+  }
+
+  async function doMapNiche() {
+    if (!nicheDescription.trim()) return;
+    setMappingNiche(true);
+    setMappedResult(null);
+    try {
+      const res = await fetch("/api/mapNiche", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ description: nicheDescription }),
+      });
+      const data = await res.json();
+      if (res.ok && data.matchedNiche) {
+        setMappedResult(data);
+        setNiche(data.matchedNiche);
+        setCustomNiche(data.refinedLabel || "");
+      } else {
+        setMappedResult({ error: data.error || "Could not map niche" });
+      }
+    } catch {
+      setMappedResult({ error: "Network error" });
+    }
+    setMappingNiche(false);
+  }
+
+  function acceptMappedNiche() {
+    setNicheDescription("");
+    setMappedResult(null);
+  }
+
+  function rejectMappedNiche() {
+    setMappedResult(null);
+    setNiche("Daily Vlogging");
+    setCustomNiche("");
   }
 
   async function doFetchTrends() {
@@ -437,8 +479,50 @@ export default function TrendForgePage() {
 
                     <div style={{marginBottom:16}}>
                       <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>Your Niche</label>
+
+                      {/* Smart niche mapper */}
+                      <div style={{background:"rgba(191,90,242,0.05)",border:"1px solid rgba(191,90,242,0.15)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+                        <div style={{fontSize:11,color:"#BF5AF2",fontWeight:700,marginBottom:8}}>✨ Tell us what you do — we'll find your niche</div>
+                        <div style={{display:"flex",gap:8}}>
+                          <input
+                            type="text"
+                            value={nicheDescription}
+                            onChange={e=>setNicheDescription(e.target.value)}
+                            onKeyDown={e=>e.key==="Enter"&&!mappingNiche&&doMapNiche()}
+                            placeholder="e.g. I make couple vlogs with my husband, we travel India..."
+                            disabled={isBusy||mappingNiche}
+                            style={{flex:1,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(191,90,242,0.2)",borderRadius:9,padding:"10px 14px",color:"#ddd",fontSize:12.5}}
+                          />
+                          <button
+                            onClick={doMapNiche}
+                            disabled={isBusy||mappingNiche||!nicheDescription.trim()}
+                            style={{background:mappingNiche?"rgba(255,255,255,0.04)":"rgba(191,90,242,0.15)",border:"1px solid rgba(191,90,242,0.3)",borderRadius:9,padding:"10px 16px",color:mappingNiche?"#444":"#BF5AF2",fontSize:12,fontWeight:700,cursor:(!nicheDescription.trim()||mappingNiche)?"not-allowed":"pointer",whiteSpace:"nowrap"}}
+                          >
+                            {mappingNiche?"Mapping...":"→ Find Niche"}
+                          </button>
+                        </div>
+
+                        {/* Mapping result */}
+                        {mappedResult&&!mappedResult.error&&(
+                          <div style={{marginTop:12,background:"rgba(50,215,75,0.05)",border:"1px solid rgba(50,215,75,0.2)",borderRadius:9,padding:"12px 14px"}}>
+                            <div style={{fontSize:11,color:"#32D74B",fontWeight:700,marginBottom:4}}>✓ Niche matched!</div>
+                            <div style={{fontSize:13,color:"#ddd",fontWeight:700,marginBottom:3}}>{mappedResult.refinedLabel}</div>
+                            <div style={{fontSize:11,color:"#666",marginBottom:3}}>Category: {mappedResult.matchedNiche}</div>
+                            <div style={{fontSize:11,color:"#555",marginBottom:10}}>{mappedResult.reason}</div>
+                            <div style={{display:"flex",gap:8}}>
+                              <button onClick={acceptMappedNiche} style={{flex:1,background:"rgba(50,215,75,0.1)",border:"1px solid rgba(50,215,75,0.3)",borderRadius:8,padding:"8px",color:"#32D74B",fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Yes, that's me</button>
+                              <button onClick={rejectMappedNiche} style={{flex:1,background:"rgba(255,69,58,0.06)",border:"1px solid rgba(255,69,58,0.2)",borderRadius:8,padding:"8px",color:"#FF453A",fontSize:11,fontWeight:700,cursor:"pointer"}}>✗ Pick manually</button>
+                            </div>
+                          </div>
+                        )}
+                        {mappedResult?.error&&(
+                          <div style={{marginTop:10,fontSize:11,color:"#FF453A"}}>⚠️ {mappedResult.error} — please pick manually below.</div>
+                        )}
+                      </div>
+
+                      {/* Manual dropdown */}
                       <div style={{position:"relative"}}>
-                        <select value={niche} onChange={e=>{setNiche(e.target.value);setCustomNiche("");}} disabled={isBusy} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1.5px solid rgba(255,255,255,0.08)",borderRadius:11,padding:"12px 40px 12px 16px",color:"#ccc",fontSize:13,cursor:"pointer"}}>
+                        <select value={niche} onChange={e=>{setNiche(e.target.value);setCustomNiche("");setMappedResult(null);}} disabled={isBusy} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1.5px solid rgba(255,255,255,0.08)",borderRadius:11,padding:"12px 40px 12px 16px",color:"#ccc",fontSize:13,cursor:"pointer"}}>
                           {NICHE_GROUPS.map(g=>(
                             <optgroup key={g.group} label={g.group} style={{background:"#151515",color:"#888"}}>
                               {g.niches.map(n=><option key={n} value={n} style={{background:"#151515",color:"#ccc"}}>{n}</option>)}
