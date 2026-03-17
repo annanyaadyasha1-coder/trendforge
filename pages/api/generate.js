@@ -42,13 +42,15 @@ function buildContext(trend, platform, niche, region, creatorStage, language, re
   const tier = trend.tier || 2;
   const pc   = getPlatformCtx(platform);
   const lang = language || "English";
+  // Trim research to 1800 chars max so total prompt stays well under limits
+  const trimmedResearch = research ? research.slice(0, 1800) : "";
   return {
     tier, tierLabel:TIER_LABELS[tier]||TIER_LABELS[2],
     stageNote:STAGE_NOTES[creatorStage]||STAGE_NOTES.starter,
     stageLabel:creatorStage, platform:pc.label, format:pc.format,
     shortForm:pc.shortForm, hashStyle:pc.hashStyle, algoNote:pc.algoNote,
     dataNote:pc.dataNote, niche, region, language:lang,
-    research: research || "",
+    research: trimmedResearch,
     base:[
       `Platform: ${pc.label}`,
       `Content Format: ${pc.format}`,
@@ -74,60 +76,55 @@ function buildContext(trend, platform, niche, region, creatorStage, language, re
 // what angles nobody has taken yet. This intelligence then powers every section.
 
 async function researchTrend(trend, niche, platform, region, language, apiKey) {
-  const researchPrompt = `You are a senior content strategist with access to live internet data. Research the trend "${trend.title}" RIGHT NOW and produce a deep intelligence brief.
+  const researchPrompt = `You are a senior content strategist. Research "${trend.title}" and give a TIGHT intelligence brief. Max 400 words total.
 
-CONTEXT:
-- Platform: ${platform}
-- Creator niche: ${niche}
-- Region: ${region}
-- Trend is ~${trend.hoursOld}h old, ${trend.saturation}% saturated
-- Output language for final content will be: ${language}
+Context: Platform=${platform}, Niche=${niche}, Region=${region}, Language=${language}, Age=~${trend.hoursOld}h, Saturation=${trend.saturation}%
 
-YOUR JOB — research and answer ALL of these:
+Answer these 6 points — be brutally specific, no fluff:
 
-1. WHAT IS ACTUALLY HAPPENING: What specifically is this trend about right now? What's the exact story, controversy, event, or moment driving it? Be specific — names, facts, numbers.
+1. WHAT'S HAPPENING: Exact story/event/controversy driving this trend. Real names, facts, numbers.
 
-2. REAL AUDIENCE REACTION: What are actual viewers/fans saying? What emotions is this triggering — excitement, anger, nostalgia, curiosity, shock? What specific phrases or sentiments keep coming up in comments/discussions?
+2. AUDIENCE EMOTION: What specific feeling is this triggering? What phrases/sentiments keep appearing?
 
-3. HOOKS THAT ARE WORKING: What exact hook styles are performing on ${platform} for this trend right now? Give 3 real examples of high-performing opening lines creators are actually using (paraphrase, don't copy).
+3. OVERSATURATED ANGLES: What are ALL creators already doing? Be specific so we avoid it.
 
-4. OVERSATURATED ANGLES: What angles are EVERY creator already doing? Be specific. What should be avoided because it's already flooded?
+4. UNCLAIMED ANGLE for "${niche}": The one angle nobody has taken yet. Specific and creative.
 
-5. UNCLAIMED ANGLES: What specific angle for a "${niche}" creator is completely untapped? Think laterally — how does this trend connect to ${niche} in a way nobody has explored yet?
+5. VIRAL DETAIL: The single most surprising/specific fact about this trend that would stop a scroll.
 
-6. VIRAL SPECIFICS: What specific detail, stat, quote, or fact about this trend would make someone stop scrolling? Something surprising, specific, and not obvious.
+6. WINNING FORMAT: What format (talking head/reaction/list/storytime/POV) is winning for this trend on ${platform} right now?
 
-7. CONTENT FORMATS WINNING: What format (talking head, reaction, list video, storytime, POV) is getting the most traction for THIS specific trend on ${platform}?
-
-8. LANGUAGE & TONE INTEL: If creating in ${language}, what specific cultural references, phrases, or tone would resonate most with the ${region} audience for this trend?
-
-Be brutally specific. No generic advice. Every insight must be about THIS trend, not trends in general. If you find real data — view counts, engagement rates, specific creator examples — include them.`;
+Keep each answer to 1-3 sentences. Be specific to THIS trend only.`;
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000); // 8s max for research
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        max_tokens: 1200,
+        max_tokens: 600,
         messages: [
           {
             role: "system",
-            content: "You are a content intelligence analyst with deep knowledge of viral trends, platform algorithms, and creator culture. You research trends in real time and produce actionable, hyper-specific intelligence. Never be generic. Always be specific to the exact trend, niche, and platform provided."
+            content: "You are a content intelligence analyst. Be hyper-specific and concise. Max 400 words. No generic advice."
           },
           { role: "user", content: researchPrompt }
         ],
       }),
     });
+    clearTimeout(timeout);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || "Research call failed");
     return data.choices?.[0]?.message?.content || "";
   } catch (err) {
     console.error("[researchTrend]", err.message);
-    return ""; // graceful fallback — sections still generate, just without research boost
+    return ""; // graceful fallback
   }
 }
 
