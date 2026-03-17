@@ -356,7 +356,7 @@ export default function TrendForgePage() {
     setTrends([]);setSelectedTrend(null);setOutputs({});
     setErrorMsg("");setErrorHint("");setDismissed([]);setKitSaved(false);
     try {
-      const res=await fetch(`/api/trends?${new URLSearchParams({window:timeWindow,region,niche:activeNiche,platform})}`);
+      const res=await fetch(`/api/trends?${new URLSearchParams({window:timeWindow,region,niche:activeNiche,platform,language,creatorDescription:nicheDescription.trim()})}`);
       const data=await res.json();
       if(!res.ok){setErrorMsg(data.error||"Failed");setErrorHint(data.hint||"");setStep("error");return;}
       setTrends(data.trends||[]);setTrendMeta(data.meta||null);setStep("pickTrend");
@@ -579,7 +579,7 @@ export default function TrendForgePage() {
               </div>
 
               {step==="error"&&<div style={{background:"rgba(255,59,92,0.06)",border:"1px solid rgba(255,59,92,0.2)",borderRadius:14,padding:"18px 22px",marginBottom:18}}><div style={{color:"#FF3B5C",fontSize:14,fontWeight:700,marginBottom:errorHint?8:0}}>{errorMsg}</div>{errorHint&&<div style={{color:"#FF453A",fontSize:12,opacity:0.8}}>{errorHint}</div>}</div>}
-              {step==="fetchingTrends"&&<Spinner text={`Fetching from ${activePlatform.dataSource} · ${activeNiche} · ${regionLabel}...`}/>}
+              {step==="fetchingTrends"&&<Spinner text={`Fetching ${language !== "english" ? LANGUAGES.find(l=>l.id===language)?.label+" " : ""}trends · ${activePlatform.dataSource} · ${activeNiche} · ${regionLabel}...`}/>}
 
               {["pickTrend","generating","done"].includes(step)&&trends.length>0&&(
                 <div ref={pickerRef} style={{animation:"fadeUp 0.4s ease both",marginBottom:18}}>
