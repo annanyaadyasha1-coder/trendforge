@@ -2,5 +2,20 @@
   command = "npm run build"
   publish = ".next"
 
+[build.environment]
+  NODE_VERSION = "18"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+[functions]
+  included_files = ["**"]
+
+# Extend all API function timeouts to 26 seconds (Netlify free plan max)
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    X-Function-Timeout = "26"
+
+[context.production.environment]
+  NETLIFY_NEXT_PLUGIN_SKIP = "false"
