@@ -7,21 +7,34 @@ export default async function handler(req, res) {
   if (!process.env.YOUTUBE_API_KEY) {
     return res.status(500).json({
       error: "YOUTUBE_API_KEY is not set.",
-      hint: "Add it to your Vercel environment variables."
+      hint: "Add it to your Netlify environment variables.",
     });
   }
-  const { window: w = "24", region = "global", niche = "", platform = "youtube" } = req.query;
+
+  const {
+    window: w = "24",
+    region = "global",
+    niche = "",
+    platform = "youtube",
+    language = "english",
+    creatorDescription = "",
+  } = req.query;
+
   if (!["6","24","48"].includes(w)) {
     return res.status(400).json({ error: `Invalid window "${w}". Must be 6, 24, or 48.` });
   }
-  const cacheKey = `${w}:${region}:${niche}:${platform}`;
+
+  // Include language + creatorDescription in cache key so different
+  // languages/descriptions get their own fresh results
+  const cacheKey = `${w}:${region}:${niche}:${platform}:${language}:${creatorDescription.slice(0,40)}`;
   const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.ts < CACHE_TTL) {
     res.setHeader("X-Cache", "HIT");
     return res.status(200).json(cached.data);
   }
+
   try {
-    const result = await fetchTrends({ window: w, region, niche, platform });
+    const result = await fetchTrends({ window: w, region, niche, platform, language, creatorDescription });
     cache.set(cacheKey, { data: result, ts: Date.now() });
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("X-Cache", "MISS");
@@ -32,9 +45,9 @@ export default async function handler(req, res) {
     return res.status(500).json({
       error: err.message,
       hint: isQuota
-        ? "YouTube API quota exceeded. Resets every 24h."
+        ? "YouTube API quota exceeded. Resets every 24h at midnight Pacific Time."
         : err.message.includes("KEY")
-        ? "Check your YOUTUBE_API_KEY in Vercel environment variables."
+        ? "Check your YOUTUBE_API_KEY in Netlify environment variables."
         : "Trend fetch failed. Check server logs.",
     });
   }
