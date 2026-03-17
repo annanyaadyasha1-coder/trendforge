@@ -296,7 +296,9 @@ export default function TrendForgePage() {
   useEffect(()=>{setSavedKits(loadKits());},[]);
 
   const activePlatform=PLATFORMS.find(p=>p.id===platform)||PLATFORMS[0];
-  const activeNiche=customNiche.trim()||niche;
+  // If user typed a description, that IS their niche — no dropdown needed
+  const descriptionActive = nicheDescription.trim().length > 0;
+  const activeNiche = descriptionActive ? nicheDescription.trim() : (customNiche.trim() || niche);
   const regionLabel=REGIONS.find(r=>r.id===region)?.label||"Global";
   const activeLanguage=LANGUAGES.find(l=>l.id===language)?.label||"English";
   const activeStage=CREATOR_STAGES.find(s=>s.id===creatorStage)||CREATOR_STAGES[0];
@@ -328,27 +330,16 @@ export default function TrendForgePage() {
       });
       const data = await res.json();
       if (res.ok && data.matchedNiche) {
-        setMappedResult(data);
+        // Silently set the category for API purposes — user doesn't need to confirm
         setNiche(data.matchedNiche);
-        setCustomNiche(data.refinedLabel || "");
+        setMappedResult({ success: true, label: data.refinedLabel || nicheDescription });
       } else {
-        setMappedResult({ error: data.error || "Could not map niche" });
+        setMappedResult({ success: true, label: nicheDescription }); // use raw description as fallback
       }
     } catch {
-      setMappedResult({ error: "Network error" });
+      setMappedResult({ success: true, label: nicheDescription });
     }
     setMappingNiche(false);
-  }
-
-  function acceptMappedNiche() {
-    setNicheDescription("");
-    setMappedResult(null);
-  }
-
-  function rejectMappedNiche() {
-    setMappedResult(null);
-    setNiche("Daily Vlogging");
-    setCustomNiche("");
   }
 
   async function doFetchTrends() {
@@ -456,7 +447,7 @@ export default function TrendForgePage() {
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,padding:"12px 16px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12}}>
                     <div>
                       <span style={{fontSize:12,color:"#666",fontWeight:600}}>⚙️ Settings locked while kit is active</span>
-                      <div style={{fontSize:11,color:"#444",marginTop:2}}>{activeNiche} · {regionLabel} · {activeLanguage}</div>
+                      <div style={{fontSize:11,color:"#444",marginTop:2}}>{descriptionActive ? nicheDescription.slice(0,50)+(nicheDescription.length>50?"...":"") : activeNiche} · {regionLabel} · {activeLanguage}</div>
                     </div>
                     <button onClick={doReset} style={{background:"rgba(255,59,92,0.08)",border:"1px solid rgba(255,59,92,0.25)",borderRadius:10,padding:"8px 16px",color:"#FF3B5C",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                       ⚙️ Edit Settings
@@ -503,61 +494,56 @@ export default function TrendForgePage() {
                     <div style={{marginBottom:16}}>
                       <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>Your Niche</label>
 
-                      {/* Smart niche mapper */}
-                      <div style={{background:"rgba(191,90,242,0.05)",border:"1px solid rgba(191,90,242,0.15)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
-                        <div style={{fontSize:11,color:"#BF5AF2",fontWeight:700,marginBottom:8}}>✨ Tell us what you do — we'll find your niche</div>
-                        <div style={{display:"flex",gap:8}}>
+                      {/* Smart niche mapper — primary path */}
+                      <div style={{background: descriptionActive ? "rgba(50,215,75,0.05)" : "rgba(191,90,242,0.05)", border: `1px solid ${descriptionActive ? "rgba(50,215,75,0.2)" : "rgba(191,90,242,0.15)"}`, borderRadius:12, padding:"14px 16px", marginBottom:12, transition:"all 0.2s"}}>
+                        <div style={{fontSize:11, color: descriptionActive ? "#32D74B" : "#BF5AF2", fontWeight:700, marginBottom:8}}>
+                          {descriptionActive ? "✓ Using your description — no category needed" : "✨ Tell us what you do — we'll find your niche"}
+                        </div>
+                        <div style={{display:"flex", gap:8}}>
                           <input
                             type="text"
                             value={nicheDescription}
-                            onChange={e=>setNicheDescription(e.target.value)}
-                            onKeyDown={e=>e.key==="Enter"&&!mappingNiche&&doMapNiche()}
+                            onChange={e=>{setNicheDescription(e.target.value); setMappedResult(null);}}
+                            onKeyDown={e=>e.key==="Enter"&&!mappingNiche&&nicheDescription.trim()&&doMapNiche()}
                             placeholder="e.g. I make couple vlogs with my husband, we travel India..."
                             disabled={isBusy||mappingNiche}
-                            style={{flex:1,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(191,90,242,0.2)",borderRadius:9,padding:"10px 14px",color:"#ddd",fontSize:12.5}}
+                            style={{flex:1, background:"rgba(255,255,255,0.04)", border:`1px solid ${descriptionActive ? "rgba(50,215,75,0.3)" : "rgba(191,90,242,0.2)"}`, borderRadius:9, padding:"10px 14px", color:"#ddd", fontSize:12.5, transition:"border-color 0.2s"}}
                           />
                           <button
                             onClick={doMapNiche}
                             disabled={isBusy||mappingNiche||!nicheDescription.trim()}
-                            style={{background:mappingNiche?"rgba(255,255,255,0.04)":"rgba(191,90,242,0.15)",border:"1px solid rgba(191,90,242,0.3)",borderRadius:9,padding:"10px 16px",color:mappingNiche?"#444":"#BF5AF2",fontSize:12,fontWeight:700,cursor:(!nicheDescription.trim()||mappingNiche)?"not-allowed":"pointer",whiteSpace:"nowrap"}}
+                            style={{background: mappingNiche ? "rgba(255,255,255,0.04)" : descriptionActive ? "rgba(50,215,75,0.12)" : "rgba(191,90,242,0.15)", border:`1px solid ${descriptionActive ? "rgba(50,215,75,0.3)" : "rgba(191,90,242,0.3)"}`, borderRadius:9, padding:"10px 16px", color: mappingNiche ? "#444" : descriptionActive ? "#32D74B" : "#BF5AF2", fontSize:12, fontWeight:700, cursor:(!nicheDescription.trim()||mappingNiche)?"not-allowed":"pointer", whiteSpace:"nowrap", transition:"all 0.2s"}}
                           >
-                            {mappingNiche?"Mapping...":"→ Find Niche"}
+                            {mappingNiche ? "..." : descriptionActive ? "✓ Ready" : "→ Find Niche"}
                           </button>
                         </div>
-
-                        {/* Mapping result */}
-                        {mappedResult&&!mappedResult.error&&(
-                          <div style={{marginTop:12,background:"rgba(50,215,75,0.05)",border:"1px solid rgba(50,215,75,0.2)",borderRadius:9,padding:"12px 14px"}}>
-                            <div style={{fontSize:11,color:"#32D74B",fontWeight:700,marginBottom:4}}>✓ Niche matched!</div>
-                            <div style={{fontSize:13,color:"#ddd",fontWeight:700,marginBottom:3}}>{mappedResult.refinedLabel}</div>
-                            <div style={{fontSize:11,color:"#666",marginBottom:3}}>Category: {mappedResult.matchedNiche}</div>
-                            <div style={{fontSize:11,color:"#555",marginBottom:10}}>{mappedResult.reason}</div>
-                            <div style={{display:"flex",gap:8}}>
-                              <button onClick={acceptMappedNiche} style={{flex:1,background:"rgba(50,215,75,0.1)",border:"1px solid rgba(50,215,75,0.3)",borderRadius:8,padding:"8px",color:"#32D74B",fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Yes, that's me</button>
-                              <button onClick={rejectMappedNiche} style={{flex:1,background:"rgba(255,69,58,0.06)",border:"1px solid rgba(255,69,58,0.2)",borderRadius:8,padding:"8px",color:"#FF453A",fontSize:11,fontWeight:700,cursor:"pointer"}}>✗ Pick manually</button>
-                            </div>
+                        {descriptionActive && (
+                          <div style={{marginTop:8, fontSize:11, color:"#32D74B", opacity:0.8}}>
+                            Trends will be fetched based on your description. Dropdown below is optional.
                           </div>
-                        )}
-                        {mappedResult?.error&&(
-                          <div style={{marginTop:10,fontSize:11,color:"#FF453A"}}>⚠️ {mappedResult.error} — please pick manually below.</div>
                         )}
                       </div>
 
-                      {/* Manual dropdown */}
-                      <div style={{position:"relative"}}>
-                        <select value={niche} onChange={e=>{setNiche(e.target.value);setCustomNiche("");setMappedResult(null);}} disabled={isBusy} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1.5px solid rgba(255,255,255,0.08)",borderRadius:11,padding:"12px 40px 12px 16px",color:"#ccc",fontSize:13,cursor:"pointer"}}>
-                          {NICHE_GROUPS.map(g=>(
-                            <optgroup key={g.group} label={g.group} style={{background:"#151515",color:"#888"}}>
-                              {g.niches.map(n=><option key={n} value={n} style={{background:"#151515",color:"#ccc"}}>{n}</option>)}
-                            </optgroup>
-                          ))}
-                        </select>
-                        <span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",color:"#444",pointerEvents:"none",fontSize:11}}>▾</span>
+                      {/* Dropdown — secondary/optional path, dims when description is active */}
+                      <div style={{opacity: descriptionActive ? 0.35 : 1, pointerEvents: descriptionActive ? "none" : "auto", transition:"opacity 0.2s"}}>
+                        <div style={{fontSize:10, color:"#333", marginBottom:6, fontWeight:600}}>
+                          {descriptionActive ? "↓ Category (auto-set from your description)" : "↓ Or pick your niche category manually"}
+                        </div>
+                        <div style={{position:"relative"}}>
+                          <select value={niche} onChange={e=>{setNiche(e.target.value);setCustomNiche("");setMappedResult(null);}} disabled={isBusy||descriptionActive} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1.5px solid rgba(255,255,255,0.08)",borderRadius:11,padding:"12px 40px 12px 16px",color:"#ccc",fontSize:13,cursor: descriptionActive ? "not-allowed" : "pointer"}}>
+                            {NICHE_GROUPS.map(g=>(
+                              <optgroup key={g.group} label={g.group} style={{background:"#151515",color:"#888"}}>
+                                {g.niches.map(n=><option key={n} value={n} style={{background:"#151515",color:"#ccc"}}>{n}</option>)}
+                              </optgroup>
+                            ))}
+                          </select>
+                          <span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",color:"#444",pointerEvents:"none",fontSize:11}}>▾</span>
+                        </div>
                       </div>
                     </div>
 
-                    <div style={{marginBottom:24}}>
-                      <input type="text" value={customNiche} onChange={e=>setCustomNiche(e.target.value)} placeholder="Or type your own niche: e.g. Sustainable Vlogging, Dog Training..." disabled={isBusy} style={{width:"100%",background:"rgba(255,255,255,0.03)",border:`1.5px solid ${customNiche?"rgba(255,59,92,0.3)":"rgba(255,255,255,0.07)"}`,borderRadius:11,padding:"12px 16px",color:"#ddd",fontSize:13,transition:"border-color 0.2s"}}/>
+                    <div style={{marginBottom:24, opacity: descriptionActive ? 0.35 : 1, transition:"opacity 0.2s"}}>
+                      <input type="text" value={customNiche} onChange={e=>setCustomNiche(e.target.value)} placeholder="Or type your own niche: e.g. Sustainable Vlogging, Dog Training..." disabled={isBusy||descriptionActive} style={{width:"100%",background:"rgba(255,255,255,0.03)",border:`1.5px solid ${customNiche?"rgba(255,59,92,0.3)":"rgba(255,255,255,0.07)"}`,borderRadius:11,padding:"12px 16px",color:"#ddd",fontSize:13,transition:"border-color 0.2s"}}/>
                     </div>
 
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
