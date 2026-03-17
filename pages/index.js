@@ -372,10 +372,33 @@ export default function TrendForgePage() {
     setSelectedTrend(trend);setStep("generating");setOutputs({});setKitSaved(false);
     setTimeout(()=>resultsRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),150);
     const body={trend,platform:activePlatform.label,niche:activeNiche,region:regionLabel,creatorStage,language:activeLanguage};
+
+    // ── STEP 1: Research the trend first ──────────────────────────────────────
+    // This single call studies what's actually happening with this trend right now.
+    // The intelligence it returns gets injected into every content section below.
+    setGeneratingKey("research");
+    let trendResearch = "";
+    try {
+      const rRes = await fetch("/api/generate", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({...body, sectionKey:"research"}),
+      });
+      const rData = await rRes.json();
+      if (rRes.ok && rData.content) trendResearch = rData.content;
+    } catch (e) {
+      console.warn("Research call failed, continuing without it:", e.message);
+    }
+
+    // ── STEP 2: Generate each section with research context injected ──────────
     for(const sec of OUTPUT_SECTIONS){
       setGeneratingKey(sec.key);
       try{
-        const res=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...body,sectionKey:sec.key})});
+        const res=await fetch("/api/generate",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({...body, sectionKey:sec.key, research:trendResearch}),
+        });
         const d=await res.json();
         setOutputs(p=>({...p,[sec.key]:res.ok&&d.content?d.content:`⚠️ ${d.error||"Failed"}`}));
       } catch { setOutputs(p=>({...p,[sec.key]:"⚠️ Network error."})); }
@@ -631,6 +654,15 @@ export default function TrendForgePage() {
                       </div>
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                      {generatingKey==="research"&&(
+                        <div style={{background:"rgba(191,90,242,0.06)",border:"1px solid rgba(191,90,242,0.2)",borderRadius:13,padding:"16px 18px",display:"flex",alignItems:"center",gap:12}}>
+                          <span style={{fontSize:20,animation:"pulse 0.7s ease infinite"}}>🔍</span>
+                          <div>
+                            <div style={{fontSize:13,fontWeight:700,color:"#BF5AF2",marginBottom:3}}>Researching "{selectedTrend?.title}"...</div>
+                            <div style={{fontSize:11,color:"#666"}}>Studying live trend data, audience reactions &amp; oversaturated angles — so every output is specific to this exact trend.</div>
+                          </div>
+                        </div>
+                      )}
                       {OUTPUT_SECTIONS.map(sec=>{
                         const text=outputs[sec.key];
                         const isGen=generatingKey===sec.key;
@@ -638,7 +670,7 @@ export default function TrendForgePage() {
                         return (
                           <div key={sec.key}>
                             {isPend&&<div style={{background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",borderRadius:13,padding:"14px 16px",display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:15}}>{sec.icon}</span><span style={{fontSize:12,color:"#2a2a2a"}}>{sec.label}</span></div>}
-                            {isGen&&<div style={{background:"rgba(255,159,10,0.05)",border:"1px solid rgba(255,159,10,0.15)",borderRadius:13,padding:"14px 16px",display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:15,animation:"pulse 0.7s ease infinite"}}>{sec.icon}</span><span style={{fontSize:12,color:"#FF9F0A"}}>Writing {sec.label}...</span></div>}
+                            {isGen&&sec.key!=="research"&&<div style={{background:"rgba(255,159,10,0.05)",border:"1px solid rgba(255,159,10,0.15)",borderRadius:13,padding:"14px 16px",display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:15,animation:"pulse 0.7s ease infinite"}}>{sec.icon}</span><span style={{fontSize:12,color:"#FF9F0A"}}>Writing {sec.label}...</span></div>}
                             {text&&<OutputCard section={sec} text={text}/>}
                           </div>
                         );
