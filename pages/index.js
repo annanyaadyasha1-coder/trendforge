@@ -385,14 +385,21 @@ export default function TrendForgePage() {
     for(const sec of OUTPUT_SECTIONS){
       setGeneratingKey(sec.key);
       try{
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 20000); // 20s per section max
         const res=await fetch("/api/generate",{
           method:"POST",
+          signal: controller.signal,
           headers:{"Content-Type":"application/json"},
           body:JSON.stringify({...body, sectionKey:sec.key, research:trendResearch}),
         });
+        clearTimeout(timer);
         const d=await res.json();
         setOutputs(p=>({...p,[sec.key]:res.ok&&d.content?d.content:`⚠️ ${d.error||"Failed"}`}));
-      } catch { setOutputs(p=>({...p,[sec.key]:"⚠️ Network error."})); }
+      } catch(e) {
+        const msg = e.name==="AbortError" ? "⚠️ Timed out — try regenerating this section." : "⚠️ Network error.";
+        setOutputs(p=>({...p,[sec.key]:msg}));
+      }
     }
     setGeneratingKey("");setStep("done");
   }
