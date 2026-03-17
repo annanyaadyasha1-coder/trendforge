@@ -38,7 +38,7 @@ function getPlatformCtx(platform) {
   return PLATFORM_CTX["YouTube"];
 }
 
-function buildContext(trend, platform, niche, region, creatorStage, language) {
+function buildContext(trend, platform, niche, region, creatorStage, language, research) {
   const tier = trend.tier || 2;
   const pc   = getPlatformCtx(platform);
   const lang = language || "English";
@@ -48,93 +48,386 @@ function buildContext(trend, platform, niche, region, creatorStage, language) {
     stageLabel:creatorStage, platform:pc.label, format:pc.format,
     shortForm:pc.shortForm, hashStyle:pc.hashStyle, algoNote:pc.algoNote,
     dataNote:pc.dataNote, niche, region, language:lang,
+    research: research || "",
     base:[
-      `Platform: ${pc.label}`, `Content Format: ${pc.format}`,
-      `Niche: ${niche}`, `Region: ${region}`, `Creator Stage: ${creatorStage}`,
-      `Trend: "${trend.title}"`, `Tier: ${tier} (${TIER_LABELS[tier]})`,
-      `Saturation: ${trend.saturation}%`, `Hours Old: ~${trend.hoursOld}h`,
-      `Why it's hot: ${trend.why}`, `Niche Relevance: ${trend.nicheRelevance}%`,
+      `Platform: ${pc.label}`,
+      `Content Format: ${pc.format}`,
+      `Niche: ${niche}`,
+      `Region: ${region}`,
+      `Creator Stage: ${creatorStage}`,
+      `Trend: "${trend.title}"`,
+      `Tier: ${tier} (${TIER_LABELS[tier]})`,
+      `Saturation: ${trend.saturation}%`,
+      `Hours Old: ~${trend.hoursOld}h`,
+      `Why it's hot: ${trend.why}`,
+      `Niche Relevance: ${trend.nicheRelevance}%`,
       `Data Source: ${pc.dataNote}`,
       `OUTPUT LANGUAGE: You MUST write every single word of your response in ${lang}. No English unless ${lang} is English. This is mandatory.`,
     ].join(" | "),
   };
 }
 
+// ─── RESEARCH ENGINE ──────────────────────────────────────────────────────────
+// This is the brain. Before generating ANY content, we call OpenAI with web
+// search to learn exactly what's happening with this trend RIGHT NOW:
+// what real people are saying, what hooks are working, what's oversaturated,
+// what angles nobody has taken yet. This intelligence then powers every section.
+
+async function researchTrend(trend, niche, platform, region, language, apiKey) {
+  const researchPrompt = `You are a senior content strategist with access to live internet data. Research the trend "${trend.title}" RIGHT NOW and produce a deep intelligence brief.
+
+CONTEXT:
+- Platform: ${platform}
+- Creator niche: ${niche}
+- Region: ${region}
+- Trend is ~${trend.hoursOld}h old, ${trend.saturation}% saturated
+- Output language for final content will be: ${language}
+
+YOUR JOB — research and answer ALL of these:
+
+1. WHAT IS ACTUALLY HAPPENING: What specifically is this trend about right now? What's the exact story, controversy, event, or moment driving it? Be specific — names, facts, numbers.
+
+2. REAL AUDIENCE REACTION: What are actual viewers/fans saying? What emotions is this triggering — excitement, anger, nostalgia, curiosity, shock? What specific phrases or sentiments keep coming up in comments/discussions?
+
+3. HOOKS THAT ARE WORKING: What exact hook styles are performing on ${platform} for this trend right now? Give 3 real examples of high-performing opening lines creators are actually using (paraphrase, don't copy).
+
+4. OVERSATURATED ANGLES: What angles are EVERY creator already doing? Be specific. What should be avoided because it's already flooded?
+
+5. UNCLAIMED ANGLES: What specific angle for a "${niche}" creator is completely untapped? Think laterally — how does this trend connect to ${niche} in a way nobody has explored yet?
+
+6. VIRAL SPECIFICS: What specific detail, stat, quote, or fact about this trend would make someone stop scrolling? Something surprising, specific, and not obvious.
+
+7. CONTENT FORMATS WINNING: What format (talking head, reaction, list video, storytime, POV) is getting the most traction for THIS specific trend on ${platform}?
+
+8. LANGUAGE & TONE INTEL: If creating in ${language}, what specific cultural references, phrases, or tone would resonate most with the ${region} audience for this trend?
+
+Be brutally specific. No generic advice. Every insight must be about THIS trend, not trends in general. If you find real data — view counts, engagement rates, specific creator examples — include them.`;
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        max_tokens: 1200,
+        messages: [
+          {
+            role: "system",
+            content: "You are a content intelligence analyst with deep knowledge of viral trends, platform algorithms, and creator culture. You research trends in real time and produce actionable, hyper-specific intelligence. Never be generic. Always be specific to the exact trend, niche, and platform provided."
+          },
+          { role: "user", content: researchPrompt }
+        ],
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || "Research call failed");
+    return data.choices?.[0]?.message?.content || "";
+  } catch (err) {
+    console.error("[researchTrend]", err.message);
+    return ""; // graceful fallback — sections still generate, just without research boost
+  }
+}
+
+// ─── CONTENT SECTIONS ─────────────────────────────────────────────────────────
+// Every section now receives the full research brief as context.
+// The AI knows exactly what's happening, what's working, and what's not —
+// so every output is specific to THIS trend, not a generic template.
+
 const SECTIONS = {
   trendBrief: {
-    sys: c => `You are a trend strategist for everyday ${c.platform} creators. Plain text only. No markdown. Max 130 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nWrite a punchy Trend Brief for a "${c.niche}" creator: (1) What this trend is right now in simple words, (2) Why it's blowing up on ${c.platform}, (3) The specific creative angle a "${c.niche}" creator should take — NOT covering the trend like a news channel or analyst, but finding a natural fun connection to their daily "${c.niche}" content and life. A couple vlogger connects it to their relationship. A food creator ties it to food. A fitness creator ties it to their gym life. (4) One sentence on how long the opportunity window lasts.`,
+    sys: c => `You are a trend strategist for everyday ${c.platform} creators. Plain text only. No markdown. Max 150 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE (use this to make your response hyper-specific):
+${c.research}
+
+Write a punchy Trend Brief for a "${c.niche}" creator. Use the intelligence above to be SPECIFIC:
+(1) What is SPECIFICALLY happening with this trend right now — real details, not vague description
+(2) Why it's exploding on ${c.platform} — the specific emotional driver (anger/nostalgia/shock/excitement)
+(3) The exact creative angle a "${c.niche}" creator should take — NOT covering it like a journalist, but making it personal to their ${c.niche} life in a way nobody else is doing yet
+(4) One specific hook detail or fact from the research that gives this creator an edge
+
+Be specific. Every sentence must be about THIS trend. No generic creator advice.`,
   },
 
   videoIdeas: {
-    sys: c => `You are a viral ${c.platform} content strategist for everyday creators. Plain text only. Max 200 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nGive exactly 3 specific ${c.format} ideas for a ${c.stageLabel} "${c.niche}" creator in ${c.region}.\n\nCRITICAL RULE: Do NOT suggest covering the trend like a journalist, reporter, or analyst. Instead find a creative personal angle that CONNECTS this trend naturally to their "${c.niche}" content style and daily life. Think: how would a real person in this niche make this trend about THEIR life?\n\nExamples of good thinking:\n- Couple vlogger + cricket trend = "We tried predicting every ball for 1 hour and this happened..."\n- Food creator + cricket trend = "Making the perfect match-day snack plate"\n- Fitness creator + cricket trend = "I trained like a cricketer for 7 days"\n- Anime creator + movie trend = "Why this movie reminds me of [anime] and nobody's talking about it"\n\nNumber them 1, 2, 3. Each: TITLE IN CAPS + the personal niche angle + why it performs. Idea 1 = safest. Idea 2 = medium bold. Idea 3 = most viral.`,
+    sys: c => `You are a viral ${c.platform} content strategist for everyday creators. Plain text only. Max 220 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE (use this to make ideas hyper-specific and non-generic):
+${c.research}
+
+Give exactly 3 specific ${c.format} ideas for a "${c.niche}" creator. Use the research to avoid the oversaturated angles and find the unclaimed territory.
+
+RULES:
+- Do NOT suggest what everyone is already doing (the research tells you what that is)
+- Find the angle that connects this trend to "${c.niche}" personal life in a way that feels completely natural and hasn't been done
+- Each idea must reference a SPECIFIC detail from the trend — not a generic "react to this trend" idea
+- Think: what would make someone in the "${c.niche}" niche say "oh that's exactly my life"
+
+Number them 1, 2, 3. Each: TITLE IN CAPS (punchy, under 65 chars) + the specific personal angle + why it will perform based on what the research shows is working. 
+Idea 1 = smartest/safest. Idea 2 = unexpected angle. Idea 3 = highest viral potential.`,
   },
 
   viralHooks: {
-    sys: c => `You are a viral ${c.platform} hook writer for casual everyday creators. NOT for journalists or analysts. Plain text only. Numbered list only. Max 180 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nWrite exactly 5 viral hooks for a "${c.niche}" creator. These are the VERY FIRST WORDS spoken in the video — casual, personal, real. NOT news reporting. NOT analysis. Think: a real person picking up their phone and talking.\n\nWrite ONE short punchy sentence per hook. Number them 1-5. Each on its own line. No explanations, no paragraphs — just the hook sentence itself.\n\n1. Promise payoff — tease something exciting only revealed at the end, framed through "${c.niche}" life\n2. Problem or curiosity hook — a personal problem or question a "${c.niche}" creator would actually have related to this trend\n3. Raw relatable opener — sounds like something a real "${c.niche}" creator would genuinely say, no selling\n4. Shocking or surprising angle — a fact or twist that connects the trend to "${c.niche}" in an unexpected way\n5. Tension or conflict hook — something from a "${c.niche}" creator's real life that makes viewer think "what happens next?"\n\nEach must sound like a REAL PERSON, not a news anchor. One sentence only per hook. No extra text.`,
+    sys: c => `You are a viral ${c.platform} hook writer. Plain text only. Numbered list. Max 200 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE:
+${c.research}
+
+Write exactly 5 viral hooks for a "${c.niche}" creator. These are the VERY FIRST WORDS of the video.
+
+Use the research to write hooks that are:
+- Specific to what's ACTUALLY happening with "${trend.title}" right now — not vague
+- Reference real details, emotions, or facts the research uncovered
+- Framed through a "${c.niche}" creator's personal life and perspective
+- Different from what everyone else is already saying (avoid oversaturated angles)
+
+One sentence per hook. Number 1-5. Each on its own line. Just the hook — no explanation.
+
+1. Promise payoff — tease the specific surprising detail from the research, revealed at end
+2. Personal problem — a specific tension between this trend and "${c.niche}" life
+3. Raw real opener — says what the "${c.niche}" audience is ACTUALLY feeling about this trend
+4. Specific fact/detail — the most surprising specific thing the research found about this trend
+5. Conflict — the specific tension or controversy this trend is creating right now
+
+Each must sound like a real person, not a template. One sentence only.`,
   },
 
   captions: {
-    sys: c => `You are a ${c.platform} caption expert for everyday creators. Plain text only. Max 200 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nWrite 2 ready-to-paste captions for a "${c.niche}" creator using the RETENTION FRAMEWORK — tease the payoff, never give it away upfront.\n\nCAPTION 1 (Short, 30-50 words): Establish a problem or curiosity from a "${c.niche}" perspective. Promise something surprising revealed in the video. Punchy, personal tone + ${c.hashStyle}.\n\nCAPTION 2 (Storytelling, 80-100 words): Open with a conflict or tension from "${c.niche}" life connected to this trend. Build mid-way, hint at a shocking twist or revelation at the end. Raw and genuine tone — sounds like a real person, not a brand. End with a soft question to drive comments + region-specific hashtags for ${c.region}.\n\nBoth captions must feel personal and real, not like a news post or event promotion.`,
+    sys: c => `You are a ${c.platform} caption expert. Plain text only. Max 220 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE:
+${c.research}
+
+Write 2 ready-to-paste captions for a "${c.niche}" creator. Use the research — reference specific details, emotions, and the unclaimed angles it identified.
+
+CAPTION 1 (Short, 30-50 words): 
+Hook on the specific emotional driver this trend is triggering (use research). Promise something surprising in the video. Personal to "${c.niche}" life. End with a specific question that the research shows people are actually asking about this trend. + ${c.hashStyle}
+
+CAPTION 2 (Storytelling, 80-100 words):
+Open with the specific tension or controversy the research identified. Build to the personal "${c.niche}" angle. Reference a specific detail/fact from the research mid-way. End with a question that mirrors what the actual audience conversation looks like right now. Raw and genuine. + region-specific hashtags for ${c.region}.
+
+Both captions must feel like they come from someone who KNOWS this trend deeply, not someone who just heard about it.`,
   },
 
   script: {
-    sys: c => `You are a scriptwriter for casual everyday ${c.platform} creators. Write like a real person talking naturally to their phone camera — warm, genuine, conversational. NOT a journalist, NOT a sports analyst, NOT a news anchor. Plain text only. Max 260 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nWrite a complete video script for a ${c.shortForm} for a "${c.niche}" creator using the PSEUDO RETENTION FRAMEWORK. This is a personal, casual, relatable video — NOT a news report, NOT match analysis, NOT expert commentary.\n\nThe trend is the BACKDROP. The creator's "${c.niche}" life, personality, and story IS the content.\n\nWrite each section clearly labeled:\n\n[HOOK 0:00-0:05]\nOne punchy sentence. Personal. Casual. Promises a payoff revealed only at the end. Sounds like a real "${c.niche}" creator picking up their phone.\n\n[CONFLICT 0:05-0:20]\nEstablish a problem, tension, or curiosity that connects this trend to the creator's real "${c.niche}" life. Keep viewer guessing. Make them feel something.\n\n[MIDDLE 0:20-0:45]\nBuild the story. Share a personal angle, insight, or experience. Keep the promised payoff hidden. Conversational and relatable — like talking to a friend. Fresh perspective, not something everyone is saying.\n\n[TENSION 0:45-0:55]\nRaise the stakes. Viewer still can't predict the ending. Keep energy up.\n\n[SHOCKING END 0:55-1:00]\nDeliver the promised payoff with a surprising or satisfying reveal. Then a soft natural CTA — comment, follow, or share that fits the casual tone.\n\nRULES:\n- Sound like a REAL PERSON, not a broadcaster\n- Natural to say aloud — no stiff or formal language\n- Every line must feel like it belongs to a "${c.niche}" creator's life`,
+    sys: c => `You are a scriptwriter for casual everyday ${c.platform} creators. Write like a real person talking to their phone. NOT a journalist or analyst. Plain text. Max 280 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE (this is your source material — use specific details from here):
+${c.research}
+
+Write a complete ${c.shortForm} script for a "${c.niche}" creator using the PSEUDO RETENTION FRAMEWORK.
+
+The trend is the BACKDROP. The creator's "${c.niche}" personal life and reaction IS the story.
+Use SPECIFIC details from the research — the real facts, real audience emotions, real conversation happening now.
+Do NOT use generic descriptions. Every line should feel like only THIS creator could say it about THIS specific trend.
+
+[HOOK 0:00-0:05]
+Reference the most specific/surprising detail from the research. Promise a payoff. Personal. Casual.
+
+[CONFLICT 0:05-0:20]  
+The specific tension this trend creates for a "${c.niche}" creator personally. Use the real emotional driver the research identified. Make viewer feel "yes, THAT's exactly it."
+
+[MIDDLE 0:20-0:45]
+Personal story/angle that connects this trend to "${c.niche}" life. Drop the specific fact or angle the research says is unclaimed/surprising. Keep payoff hidden.
+
+[TENSION 0:45-0:55]
+Raise stakes using the specific controversy or unresolved question the research found. Viewer can't predict the end.
+
+[SHOCKING END 0:55-1:00]
+Deliver the promised payoff using the most specific/surprising research detail. Soft natural CTA.
+
+RULES: Sound like a real person. Natural to say aloud. Every line earns its place.`,
   },
 
   visualIdeas: {
-    sys: c => `You are a ${c.platform} creative director for everyday creators. Plain text only. Max 180 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nDescribe 5 specific visual shots for this ${c.format} made by a "${c.niche}" creator. For each: what the camera sees, angle, background, props, lighting mood. Label Shot 1-5. Must be achievable with a smartphone at home or a casual location. Consider the visual aesthetic popular on ${c.platform} in ${c.region} for "${c.niche}" content.`,
+    sys: c => `You are a ${c.platform} creative director for everyday creators. Plain text only. Max 200 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE:
+${c.research}
+
+Describe 5 specific visual shots for a "${c.niche}" creator making a video about this trend. Use the research — the visual concepts should reference the specific story, emotion, or moment driving this trend.
+
+For each shot: what the camera sees, angle, background, props, lighting mood. Label Shot 1-5.
+- Must be achievable with a smartphone
+- Each shot should visually represent something SPECIFIC about this trend, not a generic creator setup
+- Consider what visual format the research says is winning for this trend on ${c.platform}`,
   },
 
   shootingDirection: {
-    sys: c => `You are a ${c.platform} production coach for beginner creators. Plain text. Max 200 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nComplete shooting guide for a "${c.niche}" creator, numbered 1-7:\n1) Best time of day to shoot this\n2) Camera angle and framing for ${c.platform}\n3) Lighting setup (simple, at-home options)\n4) Best background or location for ${c.region} that fits "${c.niche}" content\n5) What to wear that matches "${c.niche}" creator style\n6) One key editing tip for ${c.platform}\n7) Best upload day and time for ${c.platform} in ${c.region}`,
+    sys: c => `You are a ${c.platform} production coach. Plain text. Max 210 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE:
+${c.research}
+
+Shooting guide for a "${c.niche}" creator making a video about this specific trend. Use research intel on what format is winning for this trend.
+
+Numbered 1-7:
+1) Best time to shoot — consider if this is a fast-moving news trend (shoot NOW) or evergreen
+2) Camera angle and framing that matches the winning format the research identified
+3) Lighting — simple at-home options
+4) Background that fits both "${c.niche}" content AND the mood/tone of this specific trend
+5) What to wear — matches "${c.niche}" creator energy for THIS trend's tone
+6) Key editing tip specific to the format winning for this trend on ${c.platform}
+7) Best upload time for ${c.platform} in ${c.region} — consider trend's momentum window`,
   },
 
   competitorGap: {
-    sys: c => `You are a competitive content strategist for ${c.platform}. Plain text only. Max 170 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nCompetitor gap analysis for a "${c.niche}" creator:\n(1) The angle EVERYONE is taking on ${c.platform} right now — avoid this\n(2) The specific unclaimed personal angle a "${c.niche}" creator can own right now\n(3) One underused format for this trend in the "${c.niche}" space\n(4) One audience sub-segment being completely ignored\nBe brutally specific and actionable.`,
+    sys: c => `You are a competitive content strategist. Plain text only. Max 190 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE (the research already identified what's oversaturated and what's unclaimed):
+${c.research}
+
+Competitor gap analysis for a "${c.niche}" creator. Use the research — be brutally specific:
+
+(1) THE FLOOD ZONE: What EXACT angles are every creator already doing for "${trend.title}"? Name the specific content types. Be precise.
+(2) THE UNCLAIMED ANGLE: The specific angle a "${c.niche}" creator can own RIGHT NOW that the research says is wide open. Why is it unclaimed?
+(3) UNDERUSED FORMAT: Based on what the research says is winning vs what everyone is doing — what format has the biggest gap?
+(4) IGNORED AUDIENCE: The specific sub-audience that's deeply invested in this trend but being completely overlooked by creators right now.
+
+Every answer must be specific to "${trend.title}" — not general creator advice.`,
   },
 
   audioFormat: {
-    sys: c => `You are a ${c.platform} algorithm and format expert. Plain text only. Max 160 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nFormat and algorithm intelligence for a "${c.niche}" creator on ${c.platform}:\n(1) Best format: talking-head / B-roll+voiceover / text-on-screen / POV / reaction — and why for this niche\n(2) Ideal length in seconds for maximum watch time\n(3) Thumbnail or cover frame advice for "${c.niche}" content\n(4) Best audio approach. Note: ${c.algoNote}\n(5) One ${c.platform} algorithm tip specific to this trend right now`,
+    sys: c => `You are a ${c.platform} algorithm and format expert. Plain text only. Max 180 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE:
+${c.research}
+
+Format and algorithm intelligence for a "${c.niche}" creator on ${c.platform} for THIS specific trend:
+
+(1) Best format for "${trend.title}" specifically — the research says what's winning. Recommend it and explain why for this niche.
+(2) Ideal length — based on the content type winning for this trend, not generic advice
+(3) Thumbnail/cover — what specific visual element from this trend gets the highest CTR right now?
+(4) Audio — what tone/energy matches the emotional driver of this trend? ${c.algoNote}
+(5) One algorithm tip that's specific to how THIS trend is spreading on ${c.platform} right now`,
   },
 
   performancePrediction: {
-    sys: c => `You are a ${c.platform} performance analyst. Plain text only. Max 150 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nRealistic performance prediction for a ${c.stageLabel} "${c.niche}" creator posting this ${c.format} now:\n(1) Realistic view/reach range in first 48 hours\n(2) Follower/subscriber conversion estimate\n(3) Key variable that will determine if it overperforms\n(4) Key risk that could cause underperformance\n(5) One honest expectation-setter so a beginner doesn't quit after a normal result\nBe direct and realistic.`,
+    sys: c => `You are a ${c.platform} performance analyst. Plain text only. Max 170 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE:
+${c.research}
+
+Realistic performance prediction for a ${c.stageLabel} "${c.niche}" creator posting about "${trend.title}" now. Use the research data on engagement and competition level:
+
+(1) View/reach range in first 48h — factor in the trend's current momentum and saturation level (${trend.saturation}%)
+(2) Subscriber/follower conversion estimate — based on how engaged this trend's audience is
+(3) The ONE variable that determines overperformance — specific to this trend's dynamics
+(4) The ONE biggest risk — specific to where this trend is in its lifecycle
+(5) Honest expectation — what a beginner should realistically expect, and what the ceiling looks like if they nail the unclaimed angle
+
+Be direct. Use the research to make this specific, not generic.`,
   },
 
   calendar: {
-    sys: c => `You are a ${c.platform} content calendar strategist. Plain text only. Max 230 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\n7-day content calendar for a ${c.stageLabel} "${c.niche}" creator on ${c.platform}:\nDay 1: Main trend ${c.format} with personal "${c.niche}" angle\nDay 2: Behind-the-scenes of making Day 1\nDay 3: Respond to a comment or reaction from Day 1\nDay 4: Niche-down version for a specific sub-audience within "${c.niche}"\nDay 5: Collab or duet/stitch angle\nDay 6: Deeper or extended version with more personal story\nDay 7: Reflection / results / what I learned\nFor each: content title + best posting time for ${c.region} + one sentence on why it works.`,
+    sys: c => `You are a ${c.platform} content calendar strategist. Plain text only. Max 250 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE:
+${c.research}
+
+7-day content calendar for a "${c.niche}" creator riding the "${trend.title}" trend on ${c.platform}. Use the research to time content around the trend's momentum window and reference specific angles.
+
+Day 1: Main trend video using the unclaimed angle the research identified
+Day 2: Behind-the-scenes / reaction to Day 1 comments
+Day 3: The specific sub-question or controversy the research says the audience is debating
+Day 4: Niche-down angle — how this trend hits different for "${c.niche}" specifically
+Day 5: Collab angle — what creator type would complement this trend for "${c.niche}"?
+Day 6: The deeper personal story this trend unlocked
+Day 7: Results / what I learned / what surprised me
+
+For each: punchy title (under 65 chars) + best post time for ${c.region} + one line on why it works based on the research.`,
   },
 
   youtubeTitles: {
-    sys: c => `You are a YouTube SEO and title expert. Plain text only. Max 180 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nWrite exactly 5 YouTube video titles for a "${c.niche}" creator targeting this trend. These titles must be optimised for maximum clicks AND search discovery.\n\nRULES:\n- Each title under 70 characters (YouTube cuts off longer ones)\n- Use proven formats: curiosity gap, number lists, "I did X for Y days", "Why I...", "The truth about..."\n- Include the main trend keyword naturally\n- Make it feel personal to a "${c.niche}" creator — not a news headline\n- No clickbait that doesn't deliver — every title must match what the video actually shows\n\nNumber them 1-5. Each on its own line.\nTitle 1: Safest, most searchable\nTitle 2: Curiosity/emotion driven\nTitle 3: Story-based personal angle\nTitle 4: Bold or contrarian\nTitle 5: Highest viral potential`,
+    sys: c => `You are a YouTube SEO and title expert. Plain text only. Max 200 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE:
+${c.research}
+
+Write exactly 5 YouTube titles for a "${c.niche}" creator. Use the research — titles must reference SPECIFIC details, emotions, or angles from the actual trend conversation happening right now.
+
+RULES:
+- Under 70 characters each (YouTube truncates longer)
+- Use the specific language, phrases, and emotional triggers the research says the audience is using
+- Avoid the oversaturated title angles the research identified
+- Prioritise the unclaimed angles the research found
+- Make it feel like only someone who KNOWS this trend deeply wrote this
+
+Number 1-5. Each on its own line.
+1: Most searchable — uses exact search terms people are typing right now
+2: Curiosity/emotion — triggers the specific emotion the research says this trend creates
+3: Personal story — the specific "${c.niche}" angle
+4: Bold/contrarian — challenges the most common take the research identified
+5: Highest viral potential — uses the most surprising specific detail from the research`,
   },
 
   youtubeDescription: {
-    sys: c => `You are a YouTube SEO expert who writes descriptions that rank AND convert viewers to subscribers. Plain text only. Max 280 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nWrite TWO YouTube descriptions for a "${c.niche}" creator — one for a Short, one for a long-form video.\n\nSHORTS DESCRIPTION (50-80 words):\n- Hook sentence that continues the video energy\n- 1-2 sentences of context\n- Call to action (subscribe/follow/comment)\n- 5-8 relevant hashtags including #Shorts and niche-specific tags\n- Keep it punchy — Shorts viewers don't read long descriptions\n\nLONG-FORM DESCRIPTION (150-200 words):\n- Paragraph 1: Hook + what this video covers (include main keyword naturally in first 2 lines — this is what YouTube indexes)\n- Paragraph 2: Why this matters to a "${c.niche}" creator/viewer\n- Paragraph 3: Soft CTA — subscribe, comment, related video\n- Timestamps placeholder: "0:00 Intro | 0:30 [main point] | 1:00 [twist]"\n- 8-12 hashtags: mix of trend keywords + "${c.niche}" niche tags + region tags for ${c.region}\n\nLabel each section clearly: SHORTS DESCRIPTION and LONG-FORM DESCRIPTION.`,
+    sys: c => `You are a YouTube SEO expert. Plain text only. Max 300 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE:
+${c.research}
+
+Write TWO YouTube descriptions for a "${c.niche}" creator. Use specific details from the research — these descriptions must prove the creator actually knows this trend, not just heard about it.
+
+SHORTS DESCRIPTION (50-80 words):
+- Open with the specific hook/emotion the research says is resonating
+- Reference one specific detail from the trend
+- CTA + 5-8 hashtags including #Shorts + trend-specific tags the research identified
+
+LONG-FORM DESCRIPTION (150-200 words):
+- First 2 lines: include the specific keyword people are searching (research tells you this) — this is what YouTube indexes
+- Para 2: the specific personal "${c.niche}" angle
+- Para 3: soft CTA + invite the specific debate/question the research says the audience is having
+- Timestamps: 0:00 Intro | [specific moments from the script]
+- 10-14 hashtags: trend keywords (exact phrases from research) + niche + region for ${c.region}
+
+Label each: SHORTS DESCRIPTION and LONG-FORM DESCRIPTION.`,
   },
 
   youtubeTags: {
-    sys: c => `You are a YouTube SEO tag strategist. Plain text only. Max 150 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only. Do not use any other language.`,
-    usr: c => `${c.base}\n\nGenerate a complete YouTube tag set for a "${c.niche}" creator making a video about this trend. YouTube allows up to 500 characters of tags.\n\nProvide tags in 4 groups, comma separated:\n\nTREND TAGS (5-7 tags): Exact trend keywords and variations people are searching right now\n\nNICHE TAGS (5-7 tags): Core "${c.niche}" terms that describe the channel and video content\n\nBROAD REACH TAGS (4-6 tags): Wider category tags to catch discovery traffic beyond the core niche\n\nREGION TAGS (3-5 tags): Location/region-specific tags for ${c.region} audience discovery\n\nAfter the tags, add one line: TOTAL CHARACTER COUNT ESTIMATE: [number] (keep under 500 for YouTube's limit)\n\nAll tags should be lowercase, no hashtags, comma separated.`,
+    sys: c => `You are a YouTube SEO tag strategist. Plain text only. Max 160 words. ${c.stageNote} CRITICAL: Your entire response must be written in ${c.language} only.`,
+    usr: c => `${c.base}
+
+LIVE TREND INTELLIGENCE:
+${c.research}
+
+Generate YouTube tags for a "${c.niche}" creator. Use the research — tags must include the exact search terms people are using RIGHT NOW for "${trend.title}".
+
+4 groups, comma separated:
+
+TREND TAGS (6-8): The exact phrases and variations the research says people are searching. Include misspellings/variations if the research shows them.
+
+NICHE TAGS (5-7): Core "${c.niche}" terms that describe the channel content
+
+BROAD REACH TAGS (4-5): Category-level tags for discovery beyond core audience
+
+REGION TAGS (3-5): Location/language-specific tags for ${c.region} audience
+
+TOTAL CHARACTER COUNT ESTIMATE: [number] (keep under 500)
+
+Tags must feel like they were researched, not guessed.`,
   },
 };
 
-async function callClaude(sys, usr) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+// ─── OPENAI CALL ─────────────────────────────────────────────────────────────
+
+async function callOpenAI(sys, usr, apiKey) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -155,19 +448,49 @@ async function callClaude(sys, usr) {
   return data.choices?.[0]?.message?.content || "";
 }
 
+// ─── HANDLER ─────────────────────────────────────────────────────────────────
+// Two modes:
+// 1. sectionKey = "research" → run the research engine and return intelligence
+// 2. sectionKey = anything else → generate that section using provided research
+
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error:"Method not allowed" });
-  if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error:"OPENAI_API_KEY is not configured." });
-  const { trend, platform, niche, region, creatorStage, sectionKey, language } = req.body;
-  if (!trend || !sectionKey) return res.status(400).json({ error:"Missing required: trend, sectionKey" });
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "OPENAI_API_KEY is not configured." });
+
+  const { trend, platform, niche, region, creatorStage, sectionKey, language, research } = req.body;
+  if (!trend || !sectionKey) return res.status(400).json({ error: "Missing required: trend, sectionKey" });
+
+  // ── RESEARCH MODE ──────────────────────────────────────────────────────────
+  if (sectionKey === "research") {
+    try {
+      const intel = await researchTrend(trend, niche, platform, region, language, apiKey);
+      return res.status(200).json({ sectionKey: "research", content: intel });
+    } catch (err) {
+      console.error("[/api/generate research]", err.message);
+      return res.status(500).json({ error: err.message, sectionKey: "research" });
+    }
+  }
+
+  // ── CONTENT SECTION MODE ───────────────────────────────────────────────────
   const def = SECTIONS[sectionKey];
-  if (!def) return res.status(400).json({ error:`Unknown sectionKey: ${sectionKey}` });
-  const ctx = buildContext(trend, platform, niche, region, creatorStage, language);
+  if (!def) return res.status(400).json({ error: `Unknown sectionKey: ${sectionKey}` });
+
+  const ctx = buildContext(trend, platform, niche, region, creatorStage, language, research || "");
+
+  // Inject research into the base context so every prompt has it
+  const sysPrompt = def.sys(ctx);
+  let usrPrompt = def.usr(ctx);
+
+  // Replace the trend reference in viralHooks (it uses ${trend.title} directly)
+  usrPrompt = usrPrompt.replace(/\$\{trend\.title\}/g, trend.title || "this trend");
+
   try {
-    const content = await callClaude(def.sys(ctx), def.usr(ctx));
+    const content = await callOpenAI(sysPrompt, usrPrompt, apiKey);
     return res.status(200).json({ sectionKey, content });
-  } catch(err) {
+  } catch (err) {
     console.error(`[/api/generate] ${sectionKey}:`, err.message);
-    return res.status(500).json({ error:err.message, sectionKey });
+    return res.status(500).json({ error: err.message, sectionKey });
   }
 }
