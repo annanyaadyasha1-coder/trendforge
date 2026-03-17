@@ -368,36 +368,34 @@ export default function TrendForgePage() {
     // This single call studies what's actually happening with this trend right now.
     // The intelligence it returns gets injected into every content section below.
     setGeneratingKey("research");
-    let trendResearch = "";
     try {
       const rRes = await fetch("/api/generate", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({...body, sectionKey:"research"}),
       });
-      const rData = await rRes.json();
-      if (rRes.ok && rData.content) trendResearch = rData.content;
+      // Research is cached server-side — section calls just use trend+niche as cache key
     } catch (e) {
-      console.warn("Research call failed, continuing without it:", e.message);
+      console.warn("Research call failed, continuing:", e.message);
     }
 
-    // ── STEP 2: Generate each section with research context injected ──────────
+    // ── STEP 2: Generate each section — server retrieves research from cache ───────
     for(const sec of OUTPUT_SECTIONS){
       setGeneratingKey(sec.key);
       try{
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 20000); // 20s per section max
-        const res=await fetch("/api/generate",{
-          method:"POST",
+        const timer = setTimeout(() => controller.abort(), 25000);
+        const res = await fetch("/api/generate", {
+          method: "POST",
           signal: controller.signal,
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({...body, sectionKey:sec.key, research:trendResearch}),
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({...body, sectionKey:sec.key}),
         });
         clearTimeout(timer);
-        const d=await res.json();
+        const d = await res.json();
         setOutputs(p=>({...p,[sec.key]:res.ok&&d.content?d.content:`⚠️ ${d.error||"Failed"}`}));
       } catch(e) {
-        const msg = e.name==="AbortError" ? "⚠️ Timed out — try regenerating this section." : "⚠️ Network error.";
+        const msg = e.name==="AbortError" ? "⚠️ Timed out — tap New Trends and try again." : "⚠️ Network error.";
         setOutputs(p=>({...p,[sec.key]:msg}));
       }
     }
