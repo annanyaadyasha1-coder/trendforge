@@ -63,9 +63,9 @@ const REGIONS = [
 const OUTPUT_SECTIONS = [
   { key:"trendBrief",           icon:"🔥", label:"Trend Brief & Opportunity"  },
   { key:"videoIdeas",           icon:"💡", label:"3 Video Ideas"              },
-  { key:"viralHooks",           icon:"🎣", label:"5 Viral Hooks"              },
+  { key:"viralHooks",           icon:"🎣", label:"5 Viral Hooks"       , premium:true },
   { key:"captions",             icon:"✍️",  label:"Captions & Hashtags"       },
-  { key:"script",               icon:"📜", label:"30–60s Script"              },
+  { key:"script",               icon:"📜", label:"30–60s Script"       , premium:true },
   { key:"visualIdeas",          icon:"🎨", label:"Visual Concepts"            },
   { key:"shootingDirection",    icon:"🎬", label:"Shooting Direction"         },
   { key:"competitorGap",        icon:"🔭", label:"Competitor Gap"             },
@@ -75,6 +75,14 @@ const OUTPUT_SECTIONS = [
   { key:"youtubeTitles",        icon:"🏆", label:"YouTube Titles (SEO)"       },
   { key:"youtubeDescription",   icon:"📝", label:"YouTube Description"        },
   { key:"youtubeTags",          icon:"🏷️",  label:"YouTube Tags"               },
+];
+
+const TONES = [
+  { id:"ultra-relatable", emoji:"🫶", label:"Relatable",   sub:"Sends to group chat"  },
+  { id:"funny",           emoji:"😂", label:"Funny",       sub:"Self-deprecating"      },
+  { id:"sarcastic",       emoji:"😏", label:"Sarcastic",   sub:"Roast energy"          },
+  { id:"dramatic",        emoji:"🎭", label:"Dramatic",    sub:"Emotional gut-punch"   },
+  { id:"absurd",          emoji:"🌀", label:"Absurd",      sub:"Completely unexpected" },
 ];
 
 const TIER_META = {
@@ -146,12 +154,19 @@ function SourcePill({source,platform}) {
   );
 }
 
-function OutputCard({section,text}) {
+function OutputCard({section, text, onRegenerate}) {
   return (
-    <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,overflow:"hidden"}}>
+    <div style={{background:"rgba(255,255,255,0.02)",border:`1px solid ${section.premium?"rgba(255,159,10,0.15)":"rgba(255,255,255,0.07)"}`,borderRadius:16,overflow:"hidden"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",background:"rgba(255,255,255,0.03)",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:16}}>{section.icon}</span><span style={{fontSize:12,fontWeight:700,color:"#ccc"}}>{section.label}</span></div>
-        <CopyBtn text={text}/>
+        <div style={{display:"flex",alignItems:"center",gap:9}}>
+          <span style={{fontSize:16}}>{section.icon}</span>
+          <span style={{fontSize:12,fontWeight:700,color:"#ccc"}}>{section.label}</span>
+          {section.premium&&<span style={{background:"rgba(255,159,10,0.1)",border:"1px solid rgba(255,159,10,0.3)",color:"#FF9F0A",borderRadius:5,padding:"2px 7px",fontSize:9,fontWeight:700,letterSpacing:0.5}}>⚡ GPT-4o</span>}
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={onRegenerate} title="Regenerate this section" style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:7,padding:"4px 10px",fontSize:10,cursor:"pointer",color:"#555",fontWeight:600}}>↺</button>
+          <CopyBtn text={text}/>
+        </div>
       </div>
       <div style={{padding:"16px 18px",fontSize:13.5,lineHeight:1.85,color:"#999",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{text}</div>
     </div>
@@ -270,6 +285,15 @@ function SavedPanel({kits,onLoad,onDelete,onClose}) {
 export default function TrendForgePage() {
   const [platform,setPlatform]=useState("youtube");
   const [niche,setNiche]=useState("Daily Vlogging");
+  const [tone,setTone]=useState("ultra-relatable");
+  const [showHookTester,setShowHookTester]=useState(false);
+  const [hookInput,setHookInput]=useState("");
+  const [hookResult,setHookResult]=useState(null);
+  const [hookTesting,setHookTesting]=useState(false);
+  const [activeTab,setActiveTab]=useState("generator"); // "generator" | "history"
+  const [history,setHistory]=useState([]);
+  const [competitorVideos,setCompetitorVideos]=useState([]);
+  const [loadingCompetitors,setLoadingCompetitors]=useState(false);
   const [customNiche,setCustomNiche]=useState("");
   const [nicheDescription,setNicheDescription]=useState("");
   const [mappingNiche,setMappingNiche]=useState(false);
@@ -318,6 +342,50 @@ export default function TrendForgePage() {
     window.scrollTo({top:0,behavior:"smooth"});
   }
 
+  async function doHookTest() {
+    if (!hookInput.trim()) return;
+    setHookTesting(true);
+    setHookResult(null);
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          trend: { title: hookInput.trim(), tier:2, saturation:50, hoursOld:12, why:"Hook test", nicheRelevance:70 },
+          platform: activePlatform.label,
+          niche: activeNiche,
+          region: regionLabel,
+          creatorStage,
+          language: activeLanguage,
+          sectionKey: "hookTest",
+        }),
+      });
+      const d = await res.json();
+      setHookResult(res.ok && d.content ? d.content : "⚠️ Failed to analyse hook.");
+    } catch { setHookResult("⚠️ Network error."); }
+    setHookTesting(false);
+  }
+
+  async function doRegenerateSection(sectionKey) {
+    if (!selectedTrend) return;
+    const body = {trend:selectedTrend, platform:activePlatform.label, niche:activeNiche, region:regionLabel, creatorStage, language:activeLanguage, tone};
+    setOutputs(p=>({...p,[sectionKey]:"__loading__"}));
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(()=>controller.abort(), 25000);
+      const res = await fetch("/api/generate", {
+        method:"POST", signal:controller.signal,
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({...body, sectionKey}),
+      });
+      clearTimeout(timer);
+      const d = await res.json();
+      setOutputs(p=>({...p,[sectionKey]:res.ok&&d.content?d.content:`⚠️ ${d.error||"Failed"}`}));
+    } catch(e) {
+      setOutputs(p=>({...p,[sectionKey]:"⚠️ Timed out. Try again."}));
+    }
+  }
+
   async function doMapNiche() {
     if (!nicheDescription.trim()) return;
     setMappingNiche(true);
@@ -361,8 +429,16 @@ export default function TrendForgePage() {
 
   async function doGenerate(trend) {
     setSelectedTrend(trend);setStep("generating");setOutputs({});setKitSaved(false);
+    setCompetitorVideos([]);
+    // Fetch real competitor videos in background
+    setLoadingCompetitors(true);
+    fetch(`/api/competitorVideos?trendTitle=${encodeURIComponent(trend.title)}&region=${region}&maxResults=5`)
+      .then(r=>r.json())
+      .then(d=>{ if(d.videos) setCompetitorVideos(d.videos); })
+      .catch(()=>{})
+      .finally(()=>setLoadingCompetitors(false));
     setTimeout(()=>resultsRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),150);
-    const body={trend,platform:activePlatform.label,niche:activeNiche,region:regionLabel,creatorStage,language:activeLanguage};
+    const body={trend,platform:activePlatform.label,niche:activeNiche,region:regionLabel,creatorStage,language:activeLanguage,tone};
 
     // ── STEP 1: Research the trend first ──────────────────────────────────────
     // This single call studies what's actually happening with this trend right now.
@@ -400,6 +476,15 @@ export default function TrendForgePage() {
       }
     }
     setGeneratingKey("");setStep("done");
+    // Save to history
+    setHistory(prev => [{
+      id: Date.now().toString(),
+      savedAt: new Date().toISOString(),
+      trend: selectedTrend || trend,
+      platform, niche: activeNiche, region: regionLabel,
+      stage: creatorStage, language: activeLanguage, tone,
+      outputs: {} // outputs filled async — history records the kit metadata
+    }, ...prev].slice(0, 50));
   }
 
   function doSaveKit(){
@@ -438,9 +523,59 @@ export default function TrendForgePage() {
             <p style={{color:"#444",fontSize:14.5,lineHeight:1.7,maxWidth:480,margin:"0 auto"}}>Spot what's trending on YouTube and Instagram. Get a complete content kit — hooks, script, captions, visual plan and 7-day calendar — in under 5 minutes.</p>
           </div>
 
+          {/* Tab bar */}
+          <div style={{display:"flex",gap:6,marginBottom:18,background:"rgba(255,255,255,0.03)",borderRadius:12,padding:4}}>
+            {[{id:"generator",label:"⚡ Generator"},{id:"hooktest",label:"🎯 Hook Tester"},{id:"history",label:"📚 History"}].map(tab=>(
+              <button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{flex:1,padding:"9px",background:activeTab===tab.id?"rgba(255,255,255,0.07)":"transparent",border:"none",borderRadius:9,color:activeTab===tab.id?"#ddd":"#444",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.18s"}}>{tab.label}</button>
+            ))}
+          </div>
+
+          {/* Hook Tester */}
+          {activeTab==="hooktest"&&(
+            <div style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:20,padding:"24px",animation:"fadeUp 0.3s ease both"}}>
+              <div style={{fontSize:10,color:"#FF9F0A",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:8}}>🎯 Hook Tester</div>
+              <h2 style={{fontSize:16,fontWeight:800,color:"#eee",marginBottom:6}}>Is your hook scroll-stopping?</h2>
+              <p style={{fontSize:12,color:"#555",marginBottom:16}}>Paste any hook. Get a brutally honest score + 3 rewrites.</p>
+              <div style={{display:"flex",gap:8,marginBottom:12}}>
+                <input value={hookInput} onChange={e=>setHookInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!hookTesting&&doHookTest()} placeholder='e.g. "Maine ek cheez boli... sab kuch badal gaya"' style={{flex:1,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"12px 16px",color:"#ddd",fontSize:13}}/>
+                <button onClick={doHookTest} disabled={hookTesting||!hookInput.trim()} style={{background:hookTesting?"rgba(255,255,255,0.04)":"linear-gradient(135deg,#FF9F0A,#FF3B5C)",border:"none",borderRadius:10,padding:"12px 20px",color:hookTesting?"#333":"#fff",fontSize:13,fontWeight:800,cursor:hookTesting?"not-allowed":"pointer",whiteSpace:"nowrap"}}>
+                  {hookTesting?"Analysing...":"→ Test Hook"}
+                </button>
+              </div>
+              {hookResult&&(
+                <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 18px",fontSize:13,lineHeight:1.85,color:"#999",whiteSpace:"pre-wrap"}}>
+                  {hookResult}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* History */}
+          {activeTab==="history"&&(
+            <div style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:20,padding:"24px",animation:"fadeUp 0.3s ease both"}}>
+              <div style={{fontSize:10,color:"#BF5AF2",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:8}}>📚 History</div>
+              <h2 style={{fontSize:16,fontWeight:800,color:"#eee",marginBottom:16}}>Recent kits</h2>
+              {history.length===0?<p style={{color:"#444",fontSize:13}}>No history yet. Generate your first kit!</p>
+              :history.map(h=>{
+                const tm=TIER_META[h.trend?.tier]||TIER_META[2];
+                return (
+                  <div key={h.id} style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:"14px 16px",marginBottom:8}}>
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:4}}>
+                      <span style={{fontSize:10,color:tm.color,fontWeight:700}}>{tm.badge}</span>
+                      <span style={{fontSize:10,color:"#444"}}>{h.niche}</span>
+                      <span style={{fontSize:10,color:"#333"}}>{h.tone}</span>
+                    </div>
+                    <div style={{fontSize:13,color:"#ddd",fontWeight:600,marginBottom:3}}>&quot;{h.trend?.title}&quot;</div>
+                    <div style={{fontSize:11,color:"#333"}}>{new Date(h.savedAt).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"})}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {showSaved&&<div style={{marginBottom:18,animation:"fadeUp 0.3s ease both"}}><SavedPanel kits={savedKits} onLoad={doLoadKit} onDelete={id=>{setSavedKits(removeKit(id));}} onClose={()=>setShowSaved(false)}/></div>}
 
-          {!showSaved&&(
+          {activeTab==="generator"&&!showSaved&&(
             <>
               <StepBar step={step}/>
 
@@ -572,6 +707,19 @@ export default function TrendForgePage() {
                       </div>
                     </div>
 
+                    <div style={{marginBottom:20}}>
+                      <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>🎭 Content Tone</label>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        {TONES.map(t=>(
+                          <button key={t.id} onClick={()=>!isBusy&&setTone(t.id)} style={{flex:1,minWidth:80,background:tone===t.id?"rgba(255,159,10,0.12)":"rgba(255,255,255,0.03)",border:`1.5px solid ${tone===t.id?"rgba(255,159,10,0.5)":"rgba(255,255,255,0.07)"}`,borderRadius:10,padding:"10px 6px",cursor:isBusy?"not-allowed":"pointer",color:tone===t.id?"#FF9F0A":"#555",fontWeight:700,fontSize:11,transition:"all 0.18s",textAlign:"center"}}>
+                            <div style={{fontSize:16,marginBottom:2}}>{t.emoji}</div>
+                            <div>{t.label}</div>
+                            <div style={{fontSize:9,fontWeight:400,opacity:0.6,marginTop:1}}>{t.sub}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <div style={{marginBottom:28}}>
                       <label style={{display:"block",fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>Creator Stage</label>
                       <div style={{display:"flex",gap:8}}>
@@ -644,6 +792,28 @@ export default function TrendForgePage() {
                         <span style={{fontSize:10,color:"#444"}}>Trend detected via <span style={{color:activePlatform.badgeColor,fontWeight:700}}>{activePlatform.sourceBadge}</span>{activePlatform.honest&&<span style={{color:"#3a3a3a"}}> · {activePlatform.honest}</span>}</span>
                       </div>
                     </div>
+                    {/* Real Competitor Videos Panel */}
+                    {(competitorVideos.length>0||loadingCompetitors)&&(
+                      <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:"18px",marginBottom:12}}>
+                        <div style={{fontSize:10,color:"#FF453A",letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:10}}>🔴 Real Competing Videos Right Now</div>
+                        {loadingCompetitors&&<div style={{color:"#444",fontSize:12}}>Fetching competitor data...</div>}
+                        {competitorVideos.map(v=>(
+                          <div key={v.id} style={{display:"flex",gap:10,marginBottom:10,paddingBottom:10,borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+                            {v.thumbnail&&<img src={v.thumbnail} alt="" style={{width:80,height:45,borderRadius:6,objectFit:"cover",flexShrink:0}}/>}
+                            <div style={{flex:1,minWidth:0}}>
+                              <a href={v.url} target="_blank" rel="noreferrer" style={{fontSize:12,fontWeight:600,color:"#ccc",textDecoration:"none",display:"block",marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.title}</a>
+                              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                                <span style={{fontSize:10,color:"#555"}}>{v.channel}</span>
+                                <span style={{fontSize:10,color:"#FF3B5C",fontWeight:700}}>👁 {v.views.toLocaleString()}</span>
+                                <span style={{fontSize:10,color:"#444"}}>~{v.hoursOld}h ago</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <div style={{fontSize:10,color:"#333",marginTop:4}}>These are the videos your audience is already watching. Your angle must be different.</div>
+                      </div>
+                    )}
+
                     <div style={{display:"flex",flexDirection:"column",gap:10}}>
                       {generatingKey==="research"&&(
                         <div style={{background:"rgba(191,90,242,0.06)",border:"1px solid rgba(191,90,242,0.2)",borderRadius:13,padding:"16px 18px",display:"flex",alignItems:"center",gap:12}}>
@@ -662,7 +832,8 @@ export default function TrendForgePage() {
                           <div key={sec.key}>
                             {isPend&&<div style={{background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",borderRadius:13,padding:"14px 16px",display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:15}}>{sec.icon}</span><span style={{fontSize:12,color:"#2a2a2a"}}>{sec.label}</span></div>}
                             {isGen&&sec.key!=="research"&&<div style={{background:"rgba(255,159,10,0.05)",border:"1px solid rgba(255,159,10,0.15)",borderRadius:13,padding:"14px 16px",display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:15,animation:"pulse 0.7s ease infinite"}}>{sec.icon}</span><span style={{fontSize:12,color:"#FF9F0A"}}>Writing {sec.label}...</span></div>}
-                            {text&&<OutputCard section={sec} text={text}/>}
+                            {text&&text!=="__loading__"&&<OutputCard section={sec} text={text} onRegenerate={()=>doRegenerateSection(sec.key)}/>}
+                            {text==="__loading__"&&<div style={{background:"rgba(255,159,10,0.05)",border:"1px solid rgba(255,159,10,0.15)",borderRadius:13,padding:"14px 16px",display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:15,animation:"pulse 0.7s ease infinite"}}>{sec.icon}</span><span style={{fontSize:12,color:"#FF9F0A"}}>Regenerating {sec.label}...</span></div>}
                           </div>
                         );
                       })}
