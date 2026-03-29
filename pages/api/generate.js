@@ -48,10 +48,63 @@ function getCacheKey(trendTitle, niche) {
   return `${trendTitle}::${niche}`.slice(0, 100);
 }
 
-function buildContext(trend, platform, niche, region, creatorStage, language, research) {
+// Language-native example hooks for few-shot prompting
+const LANG_EXAMPLES = {
+  hindi: [
+    "Usne ek cheez boli... sab badal gaya.",
+    "Maine galti ki. Badi galti.",
+    "3 saal baad samjha — main bewakoof tha.",
+    "Ghar mein block hua. Same WiFi.",
+  ],
+  tamil: [
+    "Oru vaarthai sonnaa... ellaam maari pochi.",
+    "Naan thappaa panninen. Periya thappaa.",
+    "3 varusham kazhichu purinjutten — naan mudalaa irundhein.",
+  ],
+  telugu: [
+    "Oka maata cheppindi... anni maripoyayi.",
+    "Nenu tappu chesanu. Pedda tappu.",
+    "3 years taruvata artham ayindi — nenu fool ni.",
+  ],
+  kannada: [
+    "Avalu ondu maathu heli... ella badalaayitu.",
+    "Naanu tappu maadide. Dodda tappu.",
+  ],
+  bengali: [
+    "Shey ekta kotha bolla... sob bodle gelo.",
+    "Ami bhul korechilam. Boro bhul.",
+  ],
+  malayalam: [
+    "Avar oru vaakku paranju... ellaam maari.",
+    "Njaan thetthu cheythu. Valiya thetthu.",
+  ],
+  marathi: [
+    "Tine ek goshta sangitli... sab badalalay.",
+    "Mee chuk keli. Moti chuk.",
+  ],
+  punjabi: [
+    "Usne ik gal kahi... sab kuch badal gaya.",
+    "Main galti kiti. Wadi galti.",
+  ],
+  english: [
+    "She said one thing. Everything changed.",
+    "I was wrong. Very wrong.",
+    "3 years later I finally understood — I was the problem.",
+    "Blocked. In my own house.",
+  ],
+};
+
+function getLangExamples(language) {
+  const lang = (language || "english").toLowerCase().replace(/[^a-z]/g, "");
+  const examples = LANG_EXAMPLES[lang] || LANG_EXAMPLES.english;
+  return examples.map(e => `"${e}"`).join("\n");
+}
+
+function buildContext(trend, platform, niche, region, creatorStage, language, research, tone) {
   const tier = trend.tier || 2;
   const pc   = getPlatformCtx(platform);
   const lang = language || "English";
+  const toneLabel = tone || "ultra-relatable";
   return {
     tier, tierLabel: TIER_LABELS[tier] || TIER_LABELS[2],
     stageNote: STAGE_NOTES[creatorStage] || STAGE_NOTES.starter,
@@ -60,6 +113,8 @@ function buildContext(trend, platform, niche, region, creatorStage, language, re
     dataNote: pc.dataNote, niche, region, language: lang,
     research: research || "",
     trendTitle: trend.title || "",
+    tone: toneLabel,
+    langExamples: getLangExamples(lang),
     base: [
       `Platform: ${pc.label}`,
       `Content Format: ${pc.format}`,
@@ -74,6 +129,7 @@ function buildContext(trend, platform, niche, region, creatorStage, language, re
       `Niche Relevance: ${trend.nicheRelevance}%`,
       `Data Source: ${pc.dataNote}`,
       `OUTPUT LANGUAGE: You MUST write every single word of your response in ${lang}. No English unless ${lang} is English. This is mandatory.`,
+      `TONE: Write in "${toneLabel}" tone throughout.`,
     ].join(" | "),
   };
 }
@@ -127,7 +183,7 @@ const SECTIONS = {
   },
   viralHooks: {
     sys: c => `You are Tanmay Bhatt's content strategist. You've studied every viral Indian reel from 2020-2025. You know that most AI-generated hooks are trash because they're too clean, too complete, too safe. Your hooks are weird, unfinished, or say something that makes people go "wait what?". You write for performers who pick up their phone mid-thought. Plain text only. CRITICAL: Respond entirely in ${c.language}.`,
-    usr: c => `${c.base}\n\nRESEARCH INTEL:\n${c.research}\n\nYou are writing hooks for a "${c.niche}" creator on ${c.platform}. Use the research to make every hook specific to THIS trend.\n\nBefore writing, identify:\n- The RELATABLE TRUTH about this trend for a "${c.niche}" creator\n- The MISUNDERSTANDING people have about it\n- The EMOTIONAL TRIGGER: ego / confusion / love / irritation / shock\n\nSTUDY THESE EXAMPLES of hooks that actually worked for Indian creators. Notice: they are short, incomplete, personal, and create immediate curiosity without explaining anything:\n\nEXAMPLE 1 (pattern break): "Maine apni maa ko bataya... galti thi."\nEXAMPLE 2 (tension): "Usne ek cheez boli aur sab kuch badal gaya."\nEXAMPLE 3 (shocking specific): "5 saal baad pata chala main galat tha."\nEXAMPLE 4 (raw personal): "Mujhe khud se nahi, sabse darr lagta hai."\nEXAMPLE 5 (incomplete + curiosity): "Yeh video dekhne ke baad... sorry in advance."\nEXAMPLE 6 (English, pattern break): "I cancelled my own wedding. Here's why."\nEXAMPLE 7 (Hinglish, conflict): "My family found out. It went exactly how you think."\nEXAMPLE 8 (absurd but specific): "3 AM pe meri zindagi ne phone kiya."\n\nNOW write 5 hooks for THIS specific trend and THIS specific niche. Match the energy of the examples above — not the words, the FEELING.\n\nEach hook: max 8 words. Incomplete is fine. No punctuation at end unless it's "..." Don't explain. Don't complete the thought.\n\nHOOK 1 (pattern break — confusing/weird/unexpected for "${c.niche}"):\nHOOK 2 (personal tension — specific moment a "${c.niche}" creator would actually have):\nHOOK 3 (raw emotional — what this trend makes "${c.niche}" people feel but never say):\nHOOK 4 (specific shocking detail — use something from the research):\nHOOK 5 (conflict or consequence — what happened because of this trend):\n\nSAVAGE VERSION: 1 controversial take about this trend that nobody is saying out loud\nCOMMENT BAIT LINE: 1 line so relatable people will reply "this is literally me" or tag someone\n\nHARD RULES:\n- No "Hey guys" / "Did you know" / "Ever wondered"\n- No question marks unless it creates genuine confusion\n- No complete sentences that explain what the video is about\n- If it sounds like a YouTube ad, rewrite it`,
+    usr: c => `${c.base}\n\nRESEARCH INTEL:\n${c.research}\n\nYou are writing hooks for a "${c.niche}" creator on ${c.platform} in ${c.language}. TONE: ${c.tone}. Use the research to make every hook specific to THIS trend.\n\nBefore writing, identify:\n- The RELATABLE TRUTH about this trend for a "${c.niche}" creator\n- The MISUNDERSTANDING people have about it\n- The EMOTIONAL TRIGGER: ego / confusion / love / irritation / shock\n\nSTUDY THESE LANGUAGE-NATIVE EXAMPLES — these are hooks that work in ${c.language}. Match this energy:\n${c.langExamples}\n\nAnd these platform-specific examples:\nEXAMPLE 1 (pattern break): "Maine apni maa ko bataya... galti thi."\nEXAMPLE 2 (tension): "Usne ek cheez boli aur sab kuch badal gaya."\nEXAMPLE 3 (shocking specific): "5 saal baad pata chala main galat tha."\nEXAMPLE 4 (raw personal): "Mujhe khud se nahi, sabse darr lagta hai."\nEXAMPLE 5 (incomplete + curiosity): "Yeh video dekhne ke baad... sorry in advance."\nEXAMPLE 6 (English, pattern break): "I cancelled my own wedding. Here's why."\nEXAMPLE 7 (Hinglish, conflict): "My family found out. It went exactly how you think."\nEXAMPLE 8 (absurd but specific): "3 AM pe meri zindagi ne phone kiya."\n\nNOW write 5 hooks for THIS specific trend and THIS specific niche. Match the energy of the examples above — not the words, the FEELING.\n\nEach hook: max 8 words. Incomplete is fine. No punctuation at end unless it's "..." Don't explain. Don't complete the thought.\n\nHOOK 1 (pattern break — confusing/weird/unexpected for "${c.niche}"):\nHOOK 2 (personal tension — specific moment a "${c.niche}" creator would actually have):\nHOOK 3 (raw emotional — what this trend makes "${c.niche}" people feel but never say):\nHOOK 4 (specific shocking detail — use something from the research):\nHOOK 5 (conflict or consequence — what happened because of this trend):\n\nSAVAGE VERSION: 1 controversial take about this trend that nobody is saying out loud\nCOMMENT BAIT LINE: 1 line so relatable people will reply "this is literally me" or tag someone\n\nHARD RULES:\n- No "Hey guys" / "Did you know" / "Ever wondered"\n- No question marks unless it creates genuine confusion\n- No complete sentences that explain what the video is about\n- If it sounds like a YouTube ad, rewrite it`,
   },
 
   captions: {
@@ -148,8 +204,8 @@ const SECTIONS = {
     usr: c => `${c.base}\n\nRESEARCH INTEL:\n${c.research}\n\nShooting guide for a "${c.niche}" creator on this trend. Use research on winning format.\n\n1) Best time to shoot — is this fast-moving (shoot NOW) or slower?\n2) Camera angle matching the winning format from research\n3) Lighting — simple at-home\n4) Background fitting both "${c.niche}" content AND this trend's tone\n5) What to wear — matches "${c.niche}" energy for THIS trend\n6) Editing tip specific to the winning format\n7) Best upload time for ${c.platform} in ${c.region}`,
   },
   competitorGap: {
-    sys: c => `You are a competitive content strategist. Plain text only. Max 190 words. ${c.stageNote} CRITICAL: Respond entirely in ${c.language}.`,
-    usr: c => `${c.base}\n\nRESEARCH INTEL:\n${c.research}\n\nCompetitor gap analysis for a "${c.niche}" creator on "${c.trendTitle}":\n\n(1) THE FLOOD ZONE: What exact angles are EVERY creator already doing? Be specific.\n(2) UNCLAIMED ANGLE: The specific angle a "${c.niche}" creator can own right now. Why is it unclaimed?\n(3) UNDERUSED FORMAT: Biggest gap between what's winning vs what everyone is doing.\n(4) IGNORED AUDIENCE: Specific sub-audience deeply invested in this trend but being ignored.\n\nEvery answer must be specific to this trend, not general.`,
+    sys: c => `You are a competitive content strategist who thinks like a top Indian creator. You've seen what flops and what flies. Brutal, specific, no encouragement. Plain text only. Max 200 words. ${c.stageNote} CRITICAL: Respond entirely in ${c.language}.`,
+    usr: c => `${c.base}\n\nRESEARCH INTEL:\n${c.research}\n\nCompetitor gap analysis for a "${c.niche}" creator on "${c.trendTitle}". Be brutally specific — no generic advice:\n\n(1) THE FLOOD ZONE: What exact video titles and angles is EVERY creator already doing? Name the specific approaches so they can avoid them.\n(2) UNCLAIMED ANGLE: The ONE specific angle a "${c.niche}" creator can own RIGHT NOW that nobody has taken. Explain why it's empty and how to execute it.\n(3) UNDERUSED FORMAT: The format (length, style, structure) that's most underused for THIS specific trend. Be specific.\n(4) IGNORED AUDIENCE: The specific sub-group that's deeply interested in this trend but being ignored. Who are they exactly?\n(5) FIRST LINE TO SAY: One specific opening line a "${c.niche}" creator should use to immediately own the unclaimed angle.\n\nEvery answer must be about THIS exact trend, not general creator advice.`,
   },
   audioFormat: {
     sys: c => `You are a ${c.platform} algorithm and format expert. Plain text only. Max 180 words. ${c.stageNote} CRITICAL: Respond entirely in ${c.language}.`,
@@ -171,6 +227,10 @@ const SECTIONS = {
     sys: c => `You are a YouTube SEO expert. Plain text only. Max 300 words. ${c.stageNote} CRITICAL: Respond entirely in ${c.language}.`,
     usr: c => `${c.base}\n\nRESEARCH INTEL:\n${c.research}\n\nTwo YouTube descriptions for a "${c.niche}" creator. Use specific details from research — prove the creator knows this trend deeply.\n\nSHORTS DESCRIPTION (50-80 words): Open with specific hook/emotion from research. Reference one specific trend detail. CTA + 5-8 hashtags including #Shorts + trend-specific tags.\n\nLONG-FORM DESCRIPTION (150-200 words): First 2 lines include specific search keyword from research (what YouTube indexes). Para 2: personal "${c.niche}" angle. Para 3: soft CTA + invite the specific debate the audience is having. Timestamps. 10-14 hashtags: trend keywords + niche + region for ${c.region}.\n\nLabel each: SHORTS DESCRIPTION and LONG-FORM DESCRIPTION.`,
   },
+  hookTest: {
+    sys: c => `You are a viral hook analyst who has studied 100,000+ Indian short-form videos. You score hooks brutally and honestly. You know exactly why hooks fail or succeed. Plain text only. CRITICAL: Respond entirely in ${c.language}.`,
+    usr: c => `Analyse this hook for a "${c.niche}" creator on ${c.platform}:\n\n"${c.trendTitle}"\n\nScore it out of 10 on these dimensions:\nPATTERN BREAK (0-10): Does it interrupt the scroll? Does it feel weird or unexpected?\nCURIOSITY GAP (0-10): Does it create a question the viewer NEEDS answered?\nSPECIFICITY (0-10): Is it about something real and specific, or vague and generic?\nEMOTION (0-10): Does it trigger a feeling immediately?\nLENGTH (0-10): Is it short enough? Under 8 words is ideal.\n\nOVERALL SCORE: X/10\n\nWHY IT WORKS / FAILS: 2 brutal sentences.\n\n3 REWRITES (each under 8 words, progressively more aggressive):\nREWRITE 1 (safer):\nREWRITE 2 (stronger):\nREWRITE 3 (most viral — might feel uncomfortable):\n\nLANGUAGE-NATIVE VERSION: Rewrite the best version in ${c.language} the way a real creator in ${c.region} would actually say it out loud.`,
+  },
   youtubeTags: {
     sys: c => `You are a YouTube SEO tag strategist. Plain text only. Max 160 words. ${c.stageNote} CRITICAL: Respond entirely in ${c.language}.`,
     usr: c => `${c.base}\n\nRESEARCH INTEL:\n${c.research}\n\nYouTube tags for a "${c.niche}" creator. Include exact search terms people are using RIGHT NOW for "${c.trendTitle}".\n\nTREND TAGS (6-8): Exact phrases + variations people are searching now\nNICHE TAGS (5-7): Core "${c.niche}" channel content terms\nBROAD REACH TAGS (4-5): Category-level discovery tags\nREGION TAGS (3-5): Location/language tags for ${c.region}\n\nTOTAL CHARACTER COUNT ESTIMATE: [number] (keep under 500)\n\nAll lowercase, comma separated, no hashtags.`,
@@ -178,13 +238,19 @@ const SECTIONS = {
 };
 
 // ─── OPENAI CALL ─────────────────────────────────────────────────────────────
-async function callOpenAI(sys, usr, apiKey) {
+// Premium sections (viralHooks, script) use gpt-4o for best quality.
+// Everything else uses gpt-4o-mini for speed and cost.
+const PREMIUM_SECTIONS = new Set(["viralHooks", "script"]);
+
+async function callOpenAI(sys, usr, apiKey, sectionKey = "") {
+  const model = PREMIUM_SECTIONS.has(sectionKey) ? "gpt-4o" : "gpt-4o-mini";
+  const maxTokens = PREMIUM_SECTIONS.has(sectionKey) ? 1600 : 1200;
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
-      max_tokens: 1200,
+      model,
+      max_tokens: maxTokens,
       messages: [
         { role: "system", content: sys },
         { role: "user", content: usr },
@@ -203,7 +269,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "OPENAI_API_KEY is not configured." });
 
-  const { trend, platform, niche, region, creatorStage, sectionKey, language } = req.body;
+  const { trend, platform, niche, region, creatorStage, sectionKey, language, tone } = req.body;
   if (!trend || !sectionKey) return res.status(400).json({ error: "Missing required: trend, sectionKey" });
 
   const cacheKey = getCacheKey(trend.title, niche);
@@ -234,7 +300,7 @@ export default async function handler(req, res) {
     research = cached.content;
   }
 
-  const ctx = buildContext(trend, platform, niche, region, creatorStage, language, research);
+  const ctx = buildContext(trend, platform, niche, region, creatorStage, language, research, tone);
 
   let sysPrompt = def.sys(ctx);
   let usrPrompt = def.usr(ctx);
@@ -243,7 +309,7 @@ export default async function handler(req, res) {
   usrPrompt = usrPrompt.replace(/\$\{trend\.saturation\}/g, String(trend.saturation || 50));
 
   try {
-    const content = await callOpenAI(sysPrompt, usrPrompt, apiKey);
+    const content = await callOpenAI(sysPrompt, usrPrompt, apiKey, sectionKey);
     return res.status(200).json({ sectionKey, content });
   } catch (err) {
     console.error(`[/api/generate] ${sectionKey}:`, err.message);
